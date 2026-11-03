@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .greenfield-observe/
 research/greenfield/
+docs/
