@@ -1,0 +1,3 @@
+## Greenfield product idea due diligence (optional)
+
+For a proposed new customer-facing venture, run `/greenfield-business-evaluator` before committing to implementation unless the user explicitly requests otherwise. Research market demand, user/payer, current alternatives, TAM/SAM/SOM, viable pricing, channels, competitors, technical/legal constraints and why now. Fan out relevant `.claude/agents/gf-*.md` research subagents, then ask `gf-redteam` to challenge the evidence. Write the investment memo and falsifiable experiments under `research/greenfield/<slug>/`. If web research cannot be performed, be explicit: this is not validated market research. Keep prototype experiments separate from product building.

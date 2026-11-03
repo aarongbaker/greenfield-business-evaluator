@@ -1,0 +1,107 @@
+{
+  "project": {
+    "name": "REPLACE_PROJECT_NAME",
+    "idea": "REPLACE_WITH_ONE_SENTENCE_IDEA",
+    "initial_customer": "UNKNOWN",
+    "geography": "ASSUMED_US_UNTIL_VERIFIED",
+    "business_type": "UNKNOWN",
+    "goal": "UNKNOWN_BOOTSTRAPPED_OR_VENTURE",
+    "business_model": "general"
+  },
+  "as_of": "2026-10-23",
+  "execution": {
+    "web_used": false,
+    "subagents_actual": 0,
+    "mode": "not_started",
+    "customer_validation_performed": false
+  },
+  "pillars": {
+    "problem": {
+      "quality": null,
+      "evidence": 0,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "market": {
+      "quality": null,
+      "evidence": 0,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "value": {
+      "quality": null,
+      "evidence": 0,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "economics": {
+      "quality": null,
+      "evidence": 0,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "distribution": {
+      "quality": null,
+      "evidence": 0,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "competition": {
+      "quality": null,
+      "evidence": 0,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "execution": {
+      "quality": null,
+      "evidence": 0,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "timing": {
+      "quality": null,
+      "evidence": 0,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    }
+  },
+  "claims": [],
+  "hard_blockers": [],
+  "experiments": [],
+  "market_model": {
+    "currency": "USD",
+    "tam": {
+      "low": null,
+      "base": null,
+      "high": null,
+      "formula": "not calculated",
+      "sources": []
+    },
+    "sam": {
+      "low": null,
+      "base": null,
+      "high": null,
+      "formula": "not calculated",
+      "sources": []
+    },
+    "som": {
+      "low": null,
+      "base": null,
+      "high": null,
+      "formula": "not calculated",
+      "sources": []
+    }
+  },
+  "schema_version": "2.0",
+  "evidence_ledger": "experiment-ledger.jsonl",
+  "verification_report": "source-verification.json",
+  "pilot_gates": {}
+}

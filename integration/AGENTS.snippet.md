@@ -1,0 +1,3 @@
+## Greenfield business viability gate (optional)
+
+Before implementing a *new business/product idea* with no validated users or prior market assessment, invoke the `greenfield-business-evaluator` skill to research the eight business pillars. Use actual independent subagents when available and capture a dissenting red-team audit. Deliver `research/greenfield/<slug>/DECISION.md`, `MARKET_RESEARCH.md`, `EVIDENCE.md`, and `EXPERIMENTS.md` before asking to commit to a full build. Do not treat a quality score or a plausible TAM as proof of customer demand. When evidence is missing, recommend the smallest consent-based discovery or prototype-as-test instead of full implementation. Respect explicit user requests to skip or reduce business diligence.

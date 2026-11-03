@@ -1,0 +1,31 @@
+{
+  "constraints": {
+    "cash_budget_usd": 10000,
+    "engineering_weeks": 12
+  },
+  "opportunities": [
+    {
+      "name": "REPLACE_IDEA_NAME",
+      "evaluation": "relative/path/evaluation.json",
+      "decision": "relative/path/decision.json",
+      "founder_fit_0_to_5": null,
+      "founder_fit_rationale": "REPLACE_WITH_PROOF_OR_RATIONALE",
+      "build": {
+        "cash_usd": null,
+        "engineering_weeks": null
+      },
+      "experiment": {
+        "test": "REPLACE_WITH_FALSIFIABLE_EXPERIMENT",
+        "decision_threshold": "REPLACE_WITH_PRECOMMITTED_PASS_FAIL",
+        "cash_usd": null,
+        "weeks": null,
+        "expected_learning_0_to_5": null
+      },
+      "forecast": {
+        "low": null,
+        "base": null,
+        "high": null
+      }
+    }
+  ]
+}
