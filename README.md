@@ -191,7 +191,7 @@ The test suite covers installation layouts for both platforms, hook adapters, ev
 ## Limitations
 
 - Source checks are lexical, not semantic fact verification. PDFs and paywalled sources need human review.
-- The experiment ledger detects tampering with individual records, but an attacker with full file access can replace an entire chain.
+- The experiment ledger detects tampering with individual records, but an attacker with full file access can replace an entire chain. Behavior receipts are HMAC-signed with a local key after a person types a confirmation code at a terminal; signing raises the cost of forgery, it is not proof.
 - Native subagent support varies by host version and can be disabled. The skill falls back to sequential execution and says so.
 - This tool structures and audits research. It does not replace talking to customers.
 

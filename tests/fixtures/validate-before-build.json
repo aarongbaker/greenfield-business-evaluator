@@ -1,0 +1,106 @@
+{
+  "project": {
+    "name": "Validate fixture",
+    "idea": "Test concept",
+    "initial_customer": "Small B2B buyers",
+    "geography": "US",
+    "business_type": "B2B SaaS",
+    "goal": "bootstrapped"
+  },
+  "as_of": "2026-10-23",
+  "execution": {
+    "web_used": true,
+    "subagents_actual": 0,
+    "mode": "single-agent fallback",
+    "customer_validation_performed": false
+  },
+  "pillars": {
+    "problem": {
+      "quality": 4,
+      "evidence": 1,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "market": {
+      "quality": 4,
+      "evidence": 1,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "value": {
+      "quality": 4,
+      "evidence": 1,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "economics": {
+      "quality": 4,
+      "evidence": 1,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "distribution": {
+      "quality": 4,
+      "evidence": 1,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "competition": {
+      "quality": 4,
+      "evidence": 1,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "execution": {
+      "quality": 4,
+      "evidence": 1,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    },
+    "timing": {
+      "quality": 4,
+      "evidence": 1,
+      "finding": "Not evaluated",
+      "claim_ids": [],
+      "behaviors": []
+    }
+  },
+  "claims": [],
+  "hard_blockers": [],
+  "experiments": [],
+  "market_model": {
+    "currency": "USD",
+    "tam": {
+      "low": null,
+      "base": null,
+      "high": null,
+      "formula": "not calculated",
+      "sources": []
+    },
+    "sam": {
+      "low": null,
+      "base": null,
+      "high": null,
+      "formula": "not calculated",
+      "sources": []
+    },
+    "som": {
+      "low": null,
+      "base": null,
+      "high": null,
+      "formula": "not calculated",
+      "sources": []
+    }
+  },
+  "schema_version": "2.0",
+  "evidence_ledger": "experiment-ledger.jsonl",
+  "verification_report": "source-verification.json",
+  "pilot_gates": {}
+}

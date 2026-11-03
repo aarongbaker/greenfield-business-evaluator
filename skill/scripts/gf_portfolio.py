@@ -10,7 +10,8 @@ import csv
 import json
 from pathlib import Path
 import sys
-from gf_common import VERSION, finite_nonneg
+from gf_common import GFError, VERSION, finite_nonneg, load_json, resolve_inside
+from score_project import score_file
 
 SCENARIOS={
  'balanced':{'quality':.30,'evidence':.20,'founder':.20,'learning':.20,'resources':.10},
@@ -35,6 +36,28 @@ def forecast(options):
     return result
 
 
+def close(a, b, tol):
+    if a is None or b is None:
+        return a is None and b is None
+    return type(a) in (int, float) and type(b) in (int, float) and abs(a - b) <= tol
+
+
+def stored_mismatch(decision_path, result):
+    """(stored decision or None, mismatch reason or None) comparing a decision.json with the recomputed result."""
+    try:
+        stored = load_json(decision_path)
+    except GFError as exc:
+        return None, f'stored decision file is unreadable ({exc}); re-run score_project.py'
+    said = stored.get('decision')
+    if result is None:
+        return said, None  # invalid evaluation: reported as such, not as a mismatch
+    if said != result['decision'] or not close(stored.get('weighted_quality_0_to_100'), result['weighted_quality_0_to_100'], .05) \
+            or not close(stored.get('evidence_average_0_to_5'), result['evidence_average_0_to_5'], .005):
+        return said, (f"stored {decision_path.name} says {said} (quality {stored.get('weighted_quality_0_to_100')}) but the evaluation "
+                      f"scores {result['decision']} (quality {result['weighted_quality_0_to_100']}) today; re-run score_project.py")
+    return said, None
+
+
 def evaluate_portfolio(manifest, root):
     root=Path(root).resolve()
     items=manifest.get('opportunities',[])
@@ -43,15 +66,15 @@ def evaluate_portfolio(manifest, root):
     cash=numeric(constraints.get('cash_budget_usd',0),'cash_budget_usd')
     weeks=numeric(constraints.get('engineering_weeks',0),'engineering_weeks')
     if cash==0 or weeks==0:raise ValueError('Supply a positive portfolio cash budget and engineering-weeks budget')
-    results=[];names=set()
+    results=[];names=set();scored={}
     for item in items:
         name=item.get('name','')
         if not name or name in names:raise ValueError('Each opportunity needs a unique name')
         names.add(name)
-        eval_path=(root/item['evaluation']).resolve()
-        decision_path=(root/item['decision']).resolve()
-        if not eval_path.is_relative_to(root) or not decision_path.is_relative_to(root):raise ValueError('Evaluation and decision paths must remain inside manifest folder')
-        evaluation=json.loads(eval_path.read_text());decision=json.loads(decision_path.read_text())
+        eval_path=resolve_inside(root,item['evaluation'],must_exist=True)
+        if eval_path not in scored:scored[eval_path]=score_file(eval_path)  # rankings come from evidence, never decision.json
+        result,errors,_=scored[eval_path]
+        stored,mismatch=stored_mismatch(resolve_inside(root,item['decision'],must_exist=True),result) if item.get('decision') else (None,None)
         fit=numeric(item['founder_fit_0_to_5'],name+'.founder_fit',5)
         if not item.get('founder_fit_rationale'):
             raise ValueError(name+': must supply founder fit rationale')
@@ -64,15 +87,17 @@ def evaluate_portfolio(manifest, root):
         project_weeks=numeric(item['build']['engineering_weeks'],name+'.build_weeks')
         # Relative resource feasibility, lower time/cash is favorable.
         resource_score=max(0,1-(.5*min(1,project_cash/cash)+.5*min(1,project_weeks/weeks)))
-        q=decision.get('weighted_quality_0_to_100')
-        e=decision.get('evidence_average_0_to_5')
-        valid=q is not None and type(q) in (int,float) and e is not None and type(e) in (int,float)
-        if valid:
-            numeric(q,'quality',100);numeric(e,'evidence',5)
+        result=result or {}
+        q=result.get('weighted_quality_0_to_100')
+        e=result.get('evidence_average_0_to_5')
+        valid=q is not None and e is not None
         dimension={'quality':q/100 if valid else None,'evidence':e/5 if valid else None,'founder':fit/5,'learning':learn/5,'resources':resource_score}
         sensitivity={k:round(sum(w*dimension[key] for key,w in weights.items())*100,1) if valid else None for k,weights in SCENARIOS.items()}
-        veto=decision.get('decision') not in ('VALIDATE_BEFORE_BUILD','PROCEED_TO_BOUNDED_PILOT')
-        results.append({'name':name,'decision':decision.get('decision'),'business_model':decision.get('business_model_profile','general'),
+        veto=result.get('decision') not in ('VALIDATE_BEFORE_BUILD','PROCEED_TO_BOUNDED_PILOT')
+        reason=(f"evaluation invalid: {len(errors)} error{'s'*(len(errors)!=1)} (first: {errors[0]})" if errors else mismatch
+                or ('Decision requires pivot/rejection or research is incomplete' if veto else 'Missing quality/evidence' if not valid else None))
+        results.append({'name':name,'decision':result.get('decision'),'stored_decision':stored,'decision_mismatch':bool(mismatch),
+                        'validation_errors':errors[:5],'business_model':result.get('business_model_profile'),
                         'founder_fit_0_to_5':fit,'founder_fit_rationale':item['founder_fit_rationale'],
                         'quality_0_to_100':q,'evidence_0_to_5':e,'sensitivity_scores':sensitivity,
                         'score_range': [min(sensitivity.values()),max(sensitivity.values())] if valid else None,
@@ -81,8 +106,8 @@ def evaluate_portfolio(manifest, root):
                         'learning_per_1000_usd':round(learn/(spent/1000),2) if spent>0 else None,
                         'learning_per_week':round(learn/duration,2) if duration>0 else None,
                         'next_test':item['experiment']['test'],'pass_threshold':item['experiment']['decision_threshold'],
-                        'forecast':forecast(item.get('forecast')),'eligible_for_next_experiment':bool(valid and not veto),
-                        'unranked_reason':'Decision requires pivot/rejection or research is incomplete' if veto else 'Missing quality/evidence' if not valid else None})
+                        'forecast':forecast(item.get('forecast')),'eligible_for_next_experiment':reason is None,
+                        'unranked_reason':reason})
     eligible=sorted((r for r in results if r['eligible_for_next_experiment']),key=lambda x:x['sensitivity_scores']['balanced'],reverse=True)
     for n,item in enumerate(eligible,1):item['rank']=n
     for r in results:
@@ -95,10 +120,10 @@ def evaluate_portfolio(manifest, root):
 
 
 def to_markdown(result):
-    lines=['# Greenfield opportunity portfolio','',result['assumptions'],'', '| Rank | Opportunity | Decision | Balanced | Sensitivity range | Next validation |', '|---:|---|---|---:|---|---|']
+    lines=['# Greenfield opportunity portfolio','',result['assumptions'],'', '| Rank | Opportunity | Decision | Balanced | Sensitivity range | Next validation | Unranked because |', '|---:|---|---|---:|---|---|---|']
     for r in result['opportunities']:
         sc=r['sensitivity_scores']['balanced'];rr=r['score_range']
-        lines.append(f"| {r['rank'] or '—'} | {r['name']} | {r['decision']} | {str(sc) if sc is not None else 'N/A'} | {str(rr) if rr else 'N/A'} | {r['next_test'].replace('|','/')} |")
+        lines.append(f"| {r['rank'] or '—'} | {r['name']} | {r['decision'] or 'INVALID'} | {str(sc) if sc is not None else 'N/A'} | {str(rr) if rr else 'N/A'} | {r['next_test'].replace('|','/')} | {(r['unranked_reason'] or '').replace('|','/')} |")
     lines.extend(['','**Recommendation:** '+result['recommendation'],'','Scores are comparative design heuristics, not calibrated predictive estimates. Prioritization excludes NO_GO, PIVOT and RESEARCH_INCOMPLETE.'])
     return '\n'.join(lines)+'\n'
 

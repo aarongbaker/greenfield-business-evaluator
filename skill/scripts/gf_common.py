@@ -135,6 +135,10 @@ def atomic_write_json(path, obj, *, mode=None):
 
 def finite_nonneg(value, where, limit=None):
     """Return value as float if it is an int/float (not bool), finite, >= 0 and <= limit; else raise GFError naming where."""
-    if type(value) not in (int, float) or not math.isfinite(value) or value < 0 or (limit is not None and value > limit):
+    try:
+        f = float(value) if type(value) in (int, float) else math.nan
+    except OverflowError:  # int too large for a float
+        f = math.nan
+    if not math.isfinite(f) or f < 0 or (limit is not None and f > limit):
         raise GFError(f"{where} requires a finite nonnegative number" + (f" <= {limit}" if limit else ""))
-    return float(value)
+    return f

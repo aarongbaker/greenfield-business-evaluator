@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import http.client
 import unittest
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -28,7 +29,7 @@ class ObserveTests(unittest.TestCase):
         self.rid = observe.new_run(self.root, "A sample greenfield product")
 
     def test_real_hook_agent_lifecycle(self):
-        for event in ("SubagentStart", "PreToolUse", "PostToolUse", "SubagentStop"):
+        for event in ("SubagentStart", "PreToolUse", "SubagentStop"):
             observe.hook_event(self.root, "claude", {"hook_event_name": event, "agent_id": "agent-10", "agent_type": "gf-market", "session_id": "abc", "tool_name": "WebSearch", "tool_input": {"password": "secret-value"}})
         result = observe.current_state(self.root, self.rid)
         market = next(a for a in result["agents"] if a["name"] == "gf-market")
@@ -102,6 +103,58 @@ class ObserveTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=3)
 
+    def _serve(self, allow=()):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), observe.Handler)
+        server.project, server.allow_hosts = self.root, list(allow)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        def stop():
+            server.shutdown(); server.server_close(); thread.join(timeout=3)
+        self.addCleanup(stop)
+        return server.server_port
+
+    def _get(self, port, path, **headers):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        c.putrequest("GET", path, skip_host=True)
+        for k, v in headers.items():
+            c.putheader(k.replace("_", "-"), v)
+        c.endheaders()
+        r = c.getresponse()
+        body = r.read().decode()
+        c.close()
+        return r.status, body
+
+    def test_foreign_host_rejected(self):
+        port = self._serve()
+        for path in ("/", "/api/runs", "/api/state?run=" + self.rid):
+            for host in (f"evil.example:{port}", f"localhost.:{port}", None):
+                status, body = self._get(port, path, **({"Host": host} if host else {}))
+                self.assertEqual(status, 421, (path, host))
+                self.assertNotIn("sample greenfield", body)
+
+    def test_cross_origin_api_rejected(self):
+        port = self._serve()
+        self.assertEqual(self._get(port, "/api/runs", Host=f"127.0.0.1:{port}", Origin="https://evil.example")[0], 403)
+        self.assertEqual(self._get(port, "/api/runs", Host=f"127.0.0.1:{port}", Origin="chrome-extension://abc")[0], 403)
+
+    def test_sec_fetch_cross_site_rejected(self):
+        port = self._serve()
+        for site in ("cross-site", "same-site"):
+            self.assertEqual(self._get(port, "/api/runs", Host=f"127.0.0.1:{port}", Sec_Fetch_Site=site)[0], 403)
+
+    def test_localhost_and_loopback_allowed(self):
+        port = self._serve()
+        for host in (f"127.0.0.1:{port}", f"LocalHost:{port}"):
+            self.assertEqual(self._get(port, "/", Host=host)[0], 200)
+            ok = dict(Host=host, Origin=f"http://{host}", Sec_Fetch_Site="same-origin")
+            self.assertEqual(self._get(port, "/api/runs", **ok)[0], 200)
+        self.assertEqual(self._get(port, "/api/runs", Host=f"127.0.0.1:{port}", Sec_Fetch_Site="none")[0], 200)
+
+    def test_allow_host_flag(self):
+        port = self._serve(allow=["devbox.internal"])
+        self.assertEqual(self._get(port, "/api/runs", Host=f"devbox.internal:{port}")[0], 200)
+        self.assertEqual(self._get(port, "/api/runs", Host=f"other.internal:{port}")[0], 421)
+
     def test_path_traversal_rejected(self):
         with self.assertRaises(ValueError):
             observe.file_paths(self.root, "../../foo")
@@ -136,6 +189,46 @@ class HookInstallerTests(unittest.TestCase):
         cleaned = json.loads(path.read_text())
         self.assertEqual(cleaned, unrelated)
         self.assertEqual(json.loads(cp.read_text()), {})
+
+    def _events(self, rel):
+        return set(json.loads((self.root / rel).read_text())["hooks"])
+
+    def test_claude_hooks_in_path_containing_codex(self):
+        proj = self.root / "codex-work" / "app"
+        (proj / ".claude/skills").mkdir(parents=True)
+        (proj / ".claude/skills/greenfield-business-evaluator").symlink_to(self.root / ".claude/skills/greenfield-business-evaluator")
+        script = proj / ".claude/skills/greenfield-business-evaluator/scripts/gf_observe.py"
+        self.assertTrue(script.is_file())
+        p = subprocess.run([sys.executable, str(ROOT / "configure_hooks.py"), "install", "--platform", "claude", "--project", str(proj)], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(set(json.loads((proj / ".claude/settings.local.json").read_text())["hooks"]), {"SubagentStart", "SubagentStop", "PreToolUse", "PostToolUseFailure"})
+
+    def test_codex_hooks_event_set(self):
+        self.assertEqual(self.invoke("install").returncode, 0)
+        self.assertEqual(self._events(".codex/hooks.json"), {"SubagentStart", "SubagentStop", "PreToolUse"})
+        self.assertEqual(self._events(".claude/settings.local.json"), {"SubagentStart", "SubagentStop", "PreToolUse", "PostToolUseFailure"})
+
+    def test_no_posttooluse_installed(self):
+        self.assertEqual(self.invoke("install").returncode, 0)
+        for rel in (".claude/settings.local.json", ".codex/hooks.json"):
+            self.assertNotIn("PostToolUse", (self.root / rel).read_text().replace("PostToolUseFailure", ""))
+
+    def test_remove_strips_legacy_posttooluse(self):
+        cmd = "python3 /x/gf_observe.py hook --project /p --provider claude"
+        mine = {"hooks": [{"type": "command", "command": "echo mine"}]}
+        legacy = {"PostToolUse": [{"hooks": [{"type": "command", "command": cmd}]}, mine], "PostToolUseFailure": [{"hooks": [{"type": "command", "command": cmd}]}]}
+        for rel in (".claude/settings.local.json", ".codex/hooks.json"):
+            (self.root / rel).parent.mkdir(exist_ok=True)
+            (self.root / rel).write_text(json.dumps({"hooks": legacy}))
+        self.assertEqual(self.invoke("remove").returncode, 0)
+        for rel in (".claude/settings.local.json", ".codex/hooks.json"):
+            self.assertEqual(json.loads((self.root / rel).read_text()), {"hooks": {"PostToolUse": [mine]}})
+
+    def test_transform_requires_platform(self):
+        with self.assertRaises(TypeError):
+            config.transform(self.root / "x.json", "cmd", "install")
+        with self.assertRaises(ValueError):
+            config.transform(self.root / "x.json", "cmd", "install", platform="gemini")
 
     def test_hook_installer_rejects_bad_json(self):
         path = self.root / ".codex/hooks.json"

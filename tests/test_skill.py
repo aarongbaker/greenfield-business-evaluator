@@ -1,6 +1,7 @@
 import copy
 import importlib.util
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -13,6 +14,37 @@ SPEC = importlib.util.spec_from_file_location("scorer", ROOT / "skill" / "script
 scorer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(scorer)
 TEMPLATE = json.loads((ROOT / "skill" / "assets" / "evaluation-template.json").read_text())
+# Attestation keys live in a throwaway folder, never the real ~/.config.
+os.environ["GF_CONFIG_DIR"] = tempfile.mkdtemp(prefix="gf-config-")
+os.environ.pop("GF_ATTEST_KEY_FILE", None)
+
+
+def attest(*args, **kwargs):
+    """Record an attested ledger event as a test human: local key plus an injected confirmation."""
+    import gf_ledger
+    gf_ledger.ensure_key()
+    return gf_ledger.append(*args, confirm=lambda summary: None, **kwargs)
+
+
+def write_event(ledger_path, artifact, key=None, kind="paid_test", pillars=("problem", "market", "value", "economics", "distribution")):
+    """Append a raw event with the given artifact meta, bypassing append(): signed when key is given (legacy-style if not)."""
+    import gf_ledger
+    fields = {"observed_at": "2026-10-22", "kind": kind, "project": "Fixture", "hypothesis": "H", "outcome": "", "notes": "",
+              "attester": "Jane Human", "human_attested": True, "artifact": artifact, "pillar_ids": sorted(pillars),
+              "claim_id": "", "experiment_id": ""}
+    return gf_ledger._write(ledger_path, fields, key)
+
+
+def proceed_data(event_id, ledger="experiments.jsonl"):
+    """A filled fixture that scores PROCEED_TO_BOUNDED_PILOT when event_id is a valid receipt in ledger."""
+    data = sample()
+    data["execution"]["customer_validation_performed"] = True
+    data["evidence_ledger"] = ledger
+    for p in scorer.CORE:
+        data["pillars"][p]["evidence"] = 3
+        data["pillars"][p]["behaviors"] = [{"kind": "paid_test", "description": "Fixture only", "observed_at": "2026-10-22",
+                                            "source_or_artifact": "receipt.txt", "verified": True, "ledger_event_id": event_id}]
+    return data
 
 
 def sample():
@@ -49,14 +81,13 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(any("pillars.problem" in e and "behavior" in e for e in errors))
 
     def test_documented_core_behavior_allows_bounded_pilot(self):
-        import gf_ledger
         data=sample()
         data['execution']['customer_validation_performed']=True
         with tempfile.TemporaryDirectory() as d:
             base=pathlib.Path(d)
             proof=base/'receipt.txt';proof.write_text('SYNTHETIC TEST RECEIPT')
-            event=gf_ledger.append(base/'experiments.jsonl','paid_test','Fixture','Test measurable intent',
-                    outcome='synthetic fixture',artifact=str(proof),attester='Human Fixture',pillars=list(scorer.CORE))
+            event=attest(base/'experiments.jsonl','paid_test','Fixture','Test measurable intent',
+                    outcome='synthetic fixture',artifact='receipt.txt',attester='Human Fixture',pillars=list(scorer.CORE))
             data['evidence_ledger']='experiments.jsonl'
             for p in scorer.CORE:
                 data['pillars'][p]['evidence']=3

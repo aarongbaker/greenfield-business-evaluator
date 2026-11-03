@@ -13,9 +13,9 @@ import hashlib
 import json
 from pathlib import Path
 import sys
-from gf_common import VERSION, finite_nonneg
+from gf_common import VERSION, finite_nonneg, resolve_inside
 from gf_profiles import BASE
-from gf_observe import AGENTS,active_run,emit,storage,atomic_json,current_state
+from gf_observe import AGENTS,active_run,emit,atomic_json,current_state,file_paths
 
 ROLES=AGENTS
 
@@ -26,7 +26,7 @@ def digest(path):
     return result.hexdigest()
 
 def manifest_path(project,run_id):
-    return storage(project)/'runs'/run_id/'task-manifest.json'
+    return file_paths(project,run_id)[0].parent/'task-manifest.json'  # file_paths validates run_id
 
 def load(project,run_id):
     p=manifest_path(project,run_id)
@@ -74,9 +74,9 @@ def claim(project,run_id,role):
 def complete(project,run_id,role,artifact):
     if role not in ROLES:raise ValueError('Unknown role')
     project=Path(project).resolve()
-    art=Path(artifact).expanduser().resolve(strict=True)
-    if not art.is_relative_to(project) or not art.is_file():
-        raise ValueError('Completed artifact must be an existing file inside project')
+    try:art=resolve_inside(project,artifact,must_exist=True)
+    except ValueError as exc:raise ValueError(f'Completed artifact: {exc}') from None
+    if not art.is_file():raise ValueError('Completed artifact must be an existing file inside project')
     hash_=digest(art)
     def update(doc):
         task=doc['tasks'][role]
@@ -108,10 +108,10 @@ def resume(project,run_id,freshness_hours=72):
         decisions=[]
         for role,task in doc['tasks'].items():
             if task['status']=='completed':
-                art=project/task.get('artifact','')
                 try:
+                    art=resolve_inside(project,task.get('artifact') or '',must_exist=True)
                     date=dt.datetime.fromisoformat(task['completed_at'])
-                    good=art.is_file() and art.resolve().is_relative_to(project) and digest(art)==task['sha256']
+                    good=art.is_file() and digest(art)==task['sha256']
                     fresh=(now-date).total_seconds()<=freshness_hours*3600
                 except (ValueError,OSError,TypeError):good=fresh=False
                 if good and fresh:
