@@ -66,7 +66,7 @@ Remove what install placed (edited files, research and other hooks are kept).
 | Option | What it does |
 | --- | --- |
 | `--platform PLATFORM` | which agent host (default: both) (one of: claude, codex, both) |
-| `--scope SCOPE` | uninstall from --project or your home folder (one of: project, user) |
+| `--scope SCOPE` | uninstall from --project, your home folder, or both (one of: project, user, all) |
 | `--dry-run` | show what would be removed and remove nothing |
 | `--yes` | do not ask for confirmation |
 | `--keep-hooks` | leave Mission Control hooks in place |

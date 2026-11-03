@@ -206,6 +206,17 @@ Fix:
 
 - Restore <...> from a backup or git; the first broken event is named above
 
+### `run.active`
+
+Whether there is an active research run and its folder exists.
+
+Can report: info, pass, fail.
+
+Fix:
+
+- `greenfield start --idea '...'`
+- `greenfield start --new`
+
 ## Dashboard
 
 ### `dashboard.port`

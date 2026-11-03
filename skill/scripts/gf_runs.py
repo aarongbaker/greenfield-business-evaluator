@@ -12,7 +12,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
-from gf_common import old_entry, VERSION, finite_nonneg, resolve_inside
+from gf_common import old_entry, VERSION, finite_nonneg, load_json, resolve_inside
 from gf_profiles import BASE
 from gf_platform import lock_exclusive, unlock
 from gf_observe import AGENTS,active_run,emit,atomic_json,current_state,file_paths,link_research
@@ -31,7 +31,7 @@ def manifest_path(project,run_id):
 def load(project,run_id):
     p=manifest_path(project,run_id)
     if not p.exists():raise ValueError('Plan not initialized for this run')
-    return json.loads(p.read_text(encoding='utf-8'))
+    return load_json(p)
 
 def transact(project,run_id,callback):
     p=manifest_path(project,run_id)
@@ -41,7 +41,7 @@ def transact(project,run_id,callback):
     with lock.open('a+') as lf:
         lock_exclusive(lf.fileno(),"greenfield task")
         try:
-            plan=json.loads(p.read_text(encoding='utf-8')) if p.exists() else None
+            plan=load_json(p) if p.exists() else None
             outcome=callback(plan)
             if isinstance(outcome,tuple):plan,result=outcome
             else:plan,result=outcome,None
@@ -147,14 +147,14 @@ def set_rate(project,run_id,rate):
 
 
 def coverage(project,run_id,evaluation,report=None):
-    data=json.loads(Path(evaluation).read_text(encoding='utf-8'))
+    data=load_json(evaluation)
     claims=data.get('claims',[])
     pillar_data={p:{'claims':sum(c.get('pillar')==p for c in claims),
                     'sourced_claims':sum(c.get('pillar')==p and bool(c.get('source_url')) for c in claims),
                     'quality_assessed': isinstance(data.get('pillars',{}).get(p,{}).get('quality'),int)} for p in BASE}
     audited=set()
     if report:
-        verified=json.loads(Path(report).read_text(encoding='utf-8'))
+        verified=load_json(report)
         audited={r.get('claim_id') for r in verified.get('claims',[]) if r.get('fetch_status')=='fetched' and r.get('excerpt_check')=='found'}
     for p in pillar_data:
         pillar_data[p]['excerpt_located']=sum(c.get('pillar')==p and c.get('id') in audited for c in claims)
@@ -163,7 +163,7 @@ def coverage(project,run_id,evaluation,report=None):
         doc['coverage']=pillar_data
         return doc,None
     transact(project,run_id,update)
-    if not json.loads(file_paths(project,run_id)[0].read_text(encoding='utf-8')).get('research_dir'):
+    if not load_json(file_paths(project,run_id)[0]).get('research_dir'):
         try:link_research(project,run_id,Path(evaluation).resolve().parent)
         except ValueError:pass  # outside the project or a demo run: the dashboard asks for `link` instead
     emit(project,run_id,'note',summary='Claim coverage updated from evaluation files')

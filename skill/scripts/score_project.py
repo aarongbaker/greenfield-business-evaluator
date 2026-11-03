@@ -280,7 +280,9 @@ def validate(data, base_dir=None):
             review_map = reviewed_claims(ledger_path,report_path)
         # Malformed report/ledger FILE contents only; evaluation data is checked outside this try.
         except (ValueError, OSError, TypeError, KeyError, AttributeError) as exc:
-            warnings.append('Could not validate source review ledger/report: '+type(exc).__name__)
+            msg = str(exc).replace(str(base_dir) + os.sep, '') if base_dir else str(exc)  # relative: keeps output machine-independent
+            nxt = f'; next: {exc.hint}' if getattr(exc, 'hint', None) else ''
+            warnings.append(f'Could not validate source review ledger/report: {msg or type(exc).__name__}{nxt}')
         referenced = {cid for item in pillars.values() if isinstance(item,dict) and isinstance(item.get('claim_ids'),list) for cid in item['claim_ids'] if isinstance(cid,str)}
         for claim in claims:
             if isinstance(claim,dict) and claim.get('classification')=='fact' and claim.get('source_url') and member(claim.get('id'),referenced) and review_map.get(claim['id'])!='supported':
@@ -550,7 +552,7 @@ def render_text(result, *, color, width=80, glyphs="unicode", all_warnings=False
         badge = f"\033[1;{TONES[verdict['tone']]}m{badge}\033[0m"
     total = result["weighted_quality_0_to_100"]
     out = [badge + "   " + title,
-           line(result["headline"]), "",
+           line(result["headline"]),
            line(f"Weighted quality {f'{total:g}/100' if total is not None else g['dash'] + ' / 100 (incomplete)'}   "
                 f"Evidence avg {result['evidence_average_0_to_5']:.1f}/5   "
                 f"Fatal blockers {len(result['confirmed_fatal_blockers'])}"), "",
@@ -560,6 +562,9 @@ def render_text(result, *, color, width=80, glyphs="unicode", all_warnings=False
         out.append(f"{p:<14} {w:>2}  {(bar(q, glyphs) + f' {q}') if q is not None else g['dash'] + ' not assessed':<14}  {bar(e, glyphs)} {e}")
     raw = result["warnings"]
     items = list(raw) if all_warnings else summarize_warnings(raw)
+    gap = verdict_gap(result)
+    if gap and not all_warnings:  # the title already says "not started" and the gap line says "start the evaluation"
+        items = [w for w in items if not w.startswith("Not started:")]
     blockers = result["unresolved_plausible_fatal_blockers"]
     if blockers and not all_warnings:
         items.insert(0, "Plausible fatal blocker unresolved: " + ", ".join(blockers))
@@ -570,7 +575,6 @@ def render_text(result, *, color, width=80, glyphs="unicode", all_warnings=False
         out += [line(f"  {g['item']} {w}") for w in shown]
         if len(items) > len(shown):
             out.append(f"  +{len(items) - len(shown)} more")
-    gap = verdict_gap(result)
     if gap:
         out += textwrap.wrap("To reach Proceed: " + gap_text(gap), width, subsequent_indent="  ")
     out += textwrap.wrap(clip("Next: " + result["next_step"], 400, g["more"]), width, subsequent_indent="      ")

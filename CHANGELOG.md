@@ -11,6 +11,20 @@ Versioning rules:
 
 `schema_version` ("2.0") is separate from the tool version and changes only on a major.
 
+## [Unreleased]
+
+### Added
+
+- `greenfield uninstall --scope all` removes both the project and user installs.
+- `greenfield report` warns on stderr, naming the lines, when it overwrites a hand-edited generated block.
+- `fetch_public` stops after 20 seconds of wall-clock time per URL across all redirects.
+
+### Fixed
+
+- `uninstall` reports a path it cannot remove and carries on, exiting 1, instead of a traceback.
+- The "could not validate source review ledger/report" warning now says what failed, not just the error type.
+- The shipped template's terminal summary is back to 25 lines.
+
 ## [2.2.0] - Unreleased
 
 ### Added

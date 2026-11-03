@@ -166,7 +166,7 @@ def to_markdown(result):
 def run(manifest,output,markdown=None):
     """Rank the manifest's opportunities, write output (and markdown), return the one-line summary dict."""
     manifest,output=Path(manifest),Path(output)
-    out=evaluate_portfolio(json.loads(manifest.read_text(encoding='utf-8')),manifest.resolve().parent)
+    out=evaluate_portfolio(load_json(manifest),manifest.resolve().parent)
     output.parent.mkdir(mode=0o700,parents=True,exist_ok=True);atomic_write_json(output,out,mode=0o600)
     if markdown:markdown=Path(markdown);markdown.parent.mkdir(mode=0o700,parents=True,exist_ok=True);atomic_write(markdown,to_markdown(out),mode=0o600)
     return {'ranked':sum(r['rank'] is not None for r in out['opportunities']),'opportunities':len(out['opportunities']),'recommendation':out['recommendation']}

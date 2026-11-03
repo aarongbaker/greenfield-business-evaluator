@@ -14,6 +14,13 @@ Greenfield installs in three ways. All of them use only the Python standard libr
 /plugin install greenfield-business-evaluator --marketplace aarongbaker/greenfield-business-evaluator
 ```
 
+On Claude Code older than 2.1.275, add the marketplace first, then install from it:
+
+```text
+/plugin marketplace add aarongbaker/greenfield-business-evaluator
+/plugin install greenfield-business-evaluator@greenfield
+```
+
 The plugin ships the skill and the nine research roles only. It adds no hooks, so Mission Control stays opt-in. It does not put `greenfield` on your PATH; install the command with `pipx` as well if you want the quickstart, the scorer on your terminal, or the dashboard.
 
 ## pipx or uvx

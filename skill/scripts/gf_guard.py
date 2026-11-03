@@ -4,7 +4,6 @@ Defense in depth only. The real locks are the TTY prompt and the HMAC key (W11);
 misses still cannot produce a valid signature.
 """
 from __future__ import annotations
-import json
 import os
 from pathlib import Path
 import re
@@ -32,9 +31,10 @@ def protected_paths(project="."):
         out.add(Path(os.environ["GF_ATTEST_KEY_FILE"]))
     try:  # no active run is fine
         import gf_context
+        from gf_common import load_json
         ctx = gf_context.run_context(project)
         out.add(ctx["ledger"])
-        named = json.loads(ctx["evaluation"].read_text(encoding="utf-8")).get("evidence_ledger")
+        named = load_json(ctx["evaluation"]).get("evidence_ledger")
         if isinstance(named, str) and named:
             out.add(ctx["evaluation"].parent / named)
     except Exception:

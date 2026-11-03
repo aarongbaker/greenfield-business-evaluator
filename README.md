@@ -120,12 +120,12 @@ Each pillar gets a 0 to 5 **quality** score and a 0 to 5 **evidence** score. Qua
 
 ## Mission Control
 
-Mission Control is an optional local dashboard that shows specialist activity, sources, warnings and the current verdict. It observes; it does not run agents, read their reasoning, or send data anywhere. Run `greenfield demo` for a clearly labelled sample, then `greenfield dashboard --open`; setup and hooks are in [docs/mission-control.md](docs/mission-control.md). To have your assistant run this evaluation whenever a new project is proposed, see [Enforcing diligence](docs/install.md#enforcing-diligence-before-new-builds).
+Mission Control is an optional local dashboard that shows specialist activity, sources, warnings and the current verdict. It observes; it does not run agents, read their reasoning, or send data anywhere. Its files live in `.greenfield-observe/`, are private (0600) by default, and `greenfield install --gitignore` offers to add that folder to `.gitignore`. Run `greenfield demo` for a clearly labelled sample, then `greenfield dashboard --open`; setup and hooks are in [docs/mission-control.md](docs/mission-control.md). To have your assistant run this evaluation whenever a new project is proposed, see [Enforcing diligence](docs/install.md#enforcing-diligence-before-new-builds).
 
 ## Development
 
 ```bash
-python3 -m pytest -q  # needs-clone
+python3 -m unittest discover -s tests  # needs-clone
 python3 skill/scripts/greenfield.py score skill/assets/evaluation-template.json  # needs-clone
 ```
 

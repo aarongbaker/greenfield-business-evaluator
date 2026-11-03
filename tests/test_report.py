@@ -17,7 +17,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SNAPS = ROOT / "tests" / "snapshots"
 SHA = "ab" * 32
 CASES = {"report-template.md": ROOT / "skill/assets/evaluation-template.json",
-         "report-demo.md": ROOT / "skill/assets/demo-research/evaluation.json"}
+         "report-demo.md": ROOT / "skill/assets/demo-research/evaluation.json",
+         "report-no-go.md": ROOT / "tests/fixtures/no-go.json",
+         "report-validate-before-build.md": ROOT / "tests/fixtures/validate-before-build.json"}
 
 
 def load(path):
@@ -32,6 +34,16 @@ class ReportTests(unittest.TestCase):
             with self.subTest(name):
                 dec, ev = load(path)
                 self.assertEqual(gf_report.render_block(dec, ev, SHA), (SNAPS / name).read_text(encoding="utf-8"))
+
+    def test_weight_order_every_profile(self):
+        from gf_profiles import PROFILES
+        dec, ev = load(CASES["report-demo.md"])
+        for name, prof in PROFILES.items():
+            with self.subTest(name):
+                d = {**dec, "business_model_profile": name, "pillar_weights": prof["weights"]}
+                rows = [r for r in gf_report.render_block(d, ev).splitlines() if r.startswith("| ") and "---" not in r][1:]
+                ws = [int(r.split(" | ")[1]) for r in rows]
+                self.assertEqual(ws, sorted(ws, reverse=True))
 
     def test_callout_matches_decision_for_every_verdict(self):
         dec, ev = load(CASES["report-demo.md"])
@@ -81,6 +93,43 @@ class ReportTests(unittest.TestCase):
         out = gf_report.merge(memo, new)
         self.assertTrue(out.startswith(new) and out.endswith(narrative))
         self.assertEqual(gf_report.merge("", block), block)
+
+    def test_edited_lines_named(self):
+        dec, ev = load(CASES["report-demo.md"])
+        block = gf_report.render_block(dec, ev, SHA)
+        memo = "intro\n" + block.replace("# SAMPLE", "# HAND", 1)
+        self.assertEqual(gf_report.edited_lines(memo, block), [3])
+        self.assertEqual(gf_report.edited_lines("intro\n" + block, block), [])
+        self.assertEqual(gf_report.edited_lines(memo, ""), [])
+
+    def test_cli_warns_on_hand_edit_and_rescore_changes_table(self):
+        import cli
+        with tempfile.TemporaryDirectory() as t:
+            t = pathlib.Path(t)
+            (t / "evaluation.json").write_text(CASES["report-demo.md"].read_text())
+            def gf(*a):
+                out, err = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    return cli.main(["--project", str(t), *a]), err.getvalue()
+            score = lambda: gf("score", str(t / "evaluation.json"), "--output", str(t / "decision.json"))[0]
+            self.assertEqual(score(), 0)
+            self.assertEqual(gf("report", str(t))[0], 0)
+            first = (t / "DECISION.md").read_text()
+            (t / "DECISION.md").write_text(first.replace("investment memo", "my memo", 1))
+            _, err = gf("report", str(t))
+            self.assertIn("lines 2)", err)
+            self.assertIn("investment memo", (t / "DECISION.md").read_text())
+            ev = json.loads((t / "evaluation.json").read_text())
+            ev["pillars"]["problem"]["quality"] = 1
+            (t / "evaluation.json").write_text(json.dumps(ev))
+            self.assertEqual(score(), 0)
+            self.assertEqual(gf("report", str(t))[0], 0)
+            new = (t / "DECISION.md").read_text()
+            self.assertNotEqual(new, first)
+            row = lambda m: next(r for r in m.splitlines() if r.startswith("| Problem"))
+            self.assertNotEqual(row(new), row(first))
+            sha = lambda m: next(l for l in m.splitlines() if "sha256" in l)
+            self.assertNotEqual(sha(new), sha(first))
 
     def test_cli_report_end_to_end(self):
         import cli

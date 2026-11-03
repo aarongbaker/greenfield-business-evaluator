@@ -1,5 +1,6 @@
 """W29: the generated top of DECISION.md (verdict callout + scorecard), rendered from decision.json and evaluation.json."""
 from __future__ import annotations
+import difflib
 import hashlib
 import sys
 from pathlib import Path
@@ -72,6 +73,20 @@ def merge(existing_md, block):
     return "".join(lines[:span[0]]) + block + "".join(lines[span[1] + 1:])
 
 
+def edited_lines(existing_md, last_block):
+    """1-based memo line numbers inside the generated block that differ from `last_block` (what `report` last wrote)."""
+    lines = existing_md.splitlines()
+    span = _span(existing_md.splitlines(keepends=True))
+    if span is None or not last_block:
+        return []
+    cur, old = lines[span[0]:span[1] + 1], last_block.splitlines()
+    out = []
+    for tag, i1, i2, _, _ in difflib.SequenceMatcher(None, old, cur, autojunk=False).get_opcodes():
+        if tag != "equal":
+            out += range(span[0] + i1 + 1, span[0] + max(i2, i1 + 1) + 1)
+    return out
+
+
 def _handler(args):
     if args.folder:
         folder = args.folder
@@ -87,7 +102,13 @@ def _handler(args):
     existing = memo.read_text(encoding="utf-8") if memo.exists() else ""
     if existing and _span(existing.splitlines(keepends=True)) is None:
         print(f"note: {memo.name} had no generated block; inserted one at the top, nothing removed", file=sys.stderr)
+    side = folder / ".DECISION.generated.md"  # last block written, so a hand edit can be named next time
+    edited = edited_lines(existing, side.read_text(encoding="utf-8") if side.exists() else "")
+    if edited:
+        print(f"warning: overwrote hand edits to the generated block in {memo.name} (lines {', '.join(map(str, edited))}); "
+              "put your own text below the block", file=sys.stderr)
     atomic_write(memo, merge(existing, block))
+    atomic_write(side, block)
     return {"path": str(memo), "decision": decision["decision"]}
 
 

@@ -71,7 +71,7 @@ greenfield task set-rate --usd-per-million-tokens 5
 ## Where the data lives
 
 - Everything is in `<repo>/.greenfield-observe/`: one folder per run under `runs/` with `events.jsonl`, `meta.json` and `task-manifest.json`, and `active.json` naming the active run.
-- Folders are 0700 and files 0600. `greenfield install --gitignore` (or `greenfield doctor --fix`) keeps the folder out of git. Even metadata can reveal what you are researching, so treat it as private.
+- Folders are 0700 and files 0600. `greenfield install --gitignore` offers to add `.greenfield-observe/` to your `.gitignore` (so does `greenfield doctor --fix`), keeping the folder out of git. Even metadata can reveal what you are researching, so treat it as private.
 - Source URLs have query strings and fragments removed; local and private-network URLs are rejected.
 - An agent that sends nothing for five minutes is shown as `quiet`, not failed. `queued` means a role that has not been seen starting, not a scheduled job.
 

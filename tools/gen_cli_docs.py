@@ -126,7 +126,7 @@ def _literal(node):
 def doctor_checks():
     """{id: {"group", "statuses", "fixes"}} read from the _r(...) calls in each function of gf_doctor.CHECKS."""
     found = {}
-    for check in gf_doctor.CHECKS:
+    for check in (*gf_doctor.CHECKS, gf_doctor._run_ctx):  # _run_ctx emits run.active for c_run
         for node in ast.walk(ast.parse(inspect.getsource(check))):
             if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_r":
                 cid = node.args[0].value

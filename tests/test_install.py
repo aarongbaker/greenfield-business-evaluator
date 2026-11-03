@@ -112,6 +112,34 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(run("uninstall", "--scope", "user", "--platform", "claude", "--yes")[0], 0)
         self.assertFalse(self.agent.exists())
 
+    def test_scope_all_removes_both(self):
+        home = self.proj / "home"
+        home.mkdir()
+        proj = self.proj / "p"
+        proj.mkdir()
+        with unittest.mock.patch.dict(os.environ, {"HOME": str(home)}):
+            run("--scope", "user", "--platform", "claude")
+            run("--platform", "claude", "--project", str(proj), "--no-gitignore")
+            self.assertEqual(run("uninstall", "--scope", "all", "--platform", "claude", "--project", str(proj), "--yes")[0], 0)
+        self.assertEqual(snap(home), {})
+        self.assertEqual(snap(proj), {})
+
+    def test_uninstall_oserror_reports_and_continues(self):
+        run(*self.args, "--no-gitignore")
+        real = pathlib.Path.unlink
+        def flaky(self_, missing_ok=False):
+            if self_.name == "gf-market.md":
+                raise PermissionError("denied")
+            return real(self_, missing_ok=missing_ok)
+        err = io.StringIO()
+        with unittest.mock.patch.object(pathlib.Path, "unlink", flaky), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = install.main(["uninstall", *self.args, "--yes"])
+        self.assertEqual(rc, 1)
+        self.assertIn("gf-market.md", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+        self.assertTrue(self.agent.exists())
+        self.assertFalse((self.proj / ".claude/agents/gf-problem.md").exists())
+
     def test_non_tty_needs_yes(self):
         run(*self.args, "--no-gitignore")
         self.assertEqual(run("uninstall", *self.args)[0], 2)

@@ -169,6 +169,15 @@ class DocCommandTests(unittest.TestCase):
             self.run_doc(path)
 
 
+class TroubleshootingTests(unittest.TestCase):
+    def test_every_doctor_check_id_is_documented(self):
+        import gf_doctor
+        ids = set(re.findall(r'_r\(\s*"([a-z_.]+)"', Path(gf_doctor.__file__).read_text(encoding="utf-8")))
+        text = (ROOT / "docs" / "troubleshooting.md").read_text(encoding="utf-8")
+        self.assertGreater(len(ids), 10)
+        self.assertEqual([i for i in sorted(ids) if f"### `{i}`" not in text], [])
+
+
 class ReadmeShapeTests(unittest.TestCase):
     def test_readme_is_short_and_quickstart_is_at_most_six_commands(self):
         text = README.read_text(encoding="utf-8")

@@ -3,6 +3,7 @@
 Skips when Playwright is not importable; GF_REQUIRE_BROWSER=1 (set in CI) turns that skip into a failure.
 GF_SCREENSHOT_DIR, when set, receives 1440 and 390px screenshots in both themes.
 """
+import datetime as dt
 import json
 import os
 from pathlib import Path
@@ -65,6 +66,7 @@ class DashboardBrowserTest(unittest.TestCase):
         (folder / "evaluation.json").write_text((ROOT / "skill/assets/demo-research/evaluation.json").read_text())
         (folder / "decision.json").write_text(json.dumps({"decision": "PROCEED_TO_BOUNDED_PILOT", "weighted_quality_0_to_100": 90, "evidence_average_0_to_5": 4}))
         cls.big = observe.new_run(root, "Forged and long", "claude", research_dir="research/greenfield/laundry")
+        observe.emit(root, cls.big, "agent_started", provider="claude", agent="gf-market")
         line = json.dumps({"event": "tool_started", "agent": "gf-market", "tool": "WebSearch", "timestamp": observe.now(), "provider": "claude"}) + "\n"
         with observe.file_paths(root, cls.big)[1].open("a") as f:
             f.write(line * 10001)
@@ -187,6 +189,15 @@ class DashboardBrowserTest(unittest.TestCase):
         self.assertEqual(page.text_content("#badge"), "Validate before build")
         self.assertTrue(page.text_content("#runKind").startswith("Completed"))
         wait(page, "document.getElementById('connText').textContent.startsWith('Finished')", timeout=5000)
+        self.assertEqual(page.locator('[data-agent="gf-market"] .s-label').text_content().strip().lower(), "done")
+        self.assertNotIn("Running", page.locator('[data-agent="gf-market"]').inner_text())
+        # frozen timeline: the running agent's bar ends exactly where the last event (run_completed) sits on the scale
+        s = json.load(urllib.request.urlopen(f"{self.url}api/state?run={self.big}"))
+        t0, t1 = (dt.datetime.fromisoformat(s["run_window"][k]).timestamp() for k in ("start", "end"))
+        want = (t1 - t0) / max(5, t1 - t0) * 100
+        got = page.evaluate("(() => { const f = document.querySelector('[data-agent=\"gf-market\"] .fill'); return parseFloat(f.style.left) + parseFloat(f.style.width) })()")
+        self.assertAlmostEqual(got, want, delta=0.1)
+        self.assertEqual(s["run_window"]["end"], s["events"][0]["timestamp"])
 
     def test_z_disconnect_shows_red_pill(self):
         page, _ = self.open()

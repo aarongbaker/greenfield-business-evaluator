@@ -11,7 +11,8 @@ FORBID = {"Bash", "Write", "Edit", "NotebookEdit", "Agent"}
 
 class AgentTests(unittest.TestCase):
     def test_claude_agents_have_research_tools_only(self):
-        # A2: without Bash/Write an agent cannot run `gf_ledger.py record --attester ...`.
+        # A2: without Bash/Write an agent cannot run `gf_ledger.py record --attester ...`;
+        # test_exploits.ForgedAttestationTests replays that command and shows it is refused anyway.
         files = sorted((ROOT / 'platform/claude/agents').glob('gf-*.md'))
         self.assertEqual(len(files), 9)
         for f in files:

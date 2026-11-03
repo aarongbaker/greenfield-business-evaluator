@@ -193,6 +193,9 @@ def _hooks_present(base, platform):
 
 def plan_uninstall(platform, scope, project, keep_hooks=False, purge_telemetry=False):
     """Removal plan [{op: remove|skip, path, reason}]. Only files whose hash matches the manifest (or the package copy) go."""
+    if scope == "all":
+        base, acts = plan_uninstall(platform, "project", project, keep_hooks, purge_telemetry)
+        return base, acts + plan_uninstall(platform, "user", project, keep_hooks, purge_telemetry)[1]
     base, targets = plan(platform, scope, project, False)
     acts = []
 
@@ -224,35 +227,47 @@ def plan_uninstall(platform, scope, project, keep_hooks=False, purge_telemetry=F
 
 
 def apply_uninstall(base, acts, platform, scope):
+    """Remove planned paths; an OSError on one path is reported on stderr and skipped. Returns the failure count."""
     import gf_hooks
+    failed = 0
     for a in acts:
         p = pathlib.Path(a["path"])
         if a["op"] != "remove":
             continue
-        if p.name in ("settings.local.json", "hooks.json") and "hooks" in a["reason"]:
-            gf_hooks.configure("remove", base, "claude" if p.name == "settings.local.json" else "codex")
-        elif p.is_dir():
-            shutil.rmtree(p)
-        else:
-            p.unlink(missing_ok=True)
+        try:
+            if p.name in ("settings.local.json", "hooks.json") and "hooks" in a["reason"]:
+                gf_hooks.configure("remove", p.parent.parent, "claude" if p.name == "settings.local.json" else "codex")
+            elif p.is_dir():
+                shutil.rmtree(p)
+            else:
+                p.unlink(missing_ok=True)
+        except OSError as e:
+            failed += 1
+            print(f"ERROR: could not remove {p}: {e}", file=sys.stderr)
     # Drop the leftovers install created, then empty folders; a folder still holding kept files stays.
-    for skill_dest, agents in plan(platform, scope, base, True)[1]:
-        for junk in (MANIFEST, ".greenfield-version"):
-            (skill_dest / junk).unlink(missing_ok=True)
-        for dirpath, _, _ in os.walk(skill_dest, topdown=False):
-            d = pathlib.Path(dirpath)
-            if d.name == "__pycache__":
-                shutil.rmtree(d, ignore_errors=True)
-            try:
-                d.rmdir()
-            except OSError:
-                pass
+    for sc, b in (("project", base), ("user", base)) if scope == "all" else ((scope, base),):
+        for skill_dest, agents in plan(platform, sc, b, True)[1]:
+            for junk in (MANIFEST, ".greenfield-version"):
+                try:
+                    (skill_dest / junk).unlink(missing_ok=True)
+                except OSError as e:
+                    failed += 1
+                    print(f"ERROR: could not remove {skill_dest / junk}: {e}", file=sys.stderr)
+            for dirpath, _, _ in os.walk(skill_dest, topdown=False):
+                d = pathlib.Path(dirpath)
+                if d.name == "__pycache__":
+                    shutil.rmtree(d, ignore_errors=True)
+                try:
+                    d.rmdir()
+                except OSError:
+                    pass
+    return failed
 
 
 def uninstall_main(argv):
     parser = argparse.ArgumentParser(prog="greenfield uninstall", description="Remove what install placed; edited files and research are kept.")
     parser.add_argument("--platform", choices=("claude", "codex", "both"), default="both")
-    parser.add_argument("--scope", choices=("project", "user"), default="project")
+    parser.add_argument("--scope", choices=("project", "user", "all"), default="project")
     parser.add_argument("--project", default=".")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--yes", action="store_true")
@@ -270,10 +285,13 @@ def uninstall_main(argv):
                 raise GFError("refusing to delete without confirmation", hint="re-run with --yes")
             if input("Remove these? [y/N] ").strip().lower() not in ("y", "yes"):
                 return 1
-        apply_uninstall(base, acts, args.platform, args.scope)
+        failed = apply_uninstall(base, acts, args.platform, args.scope)
     except GFError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
+    if failed:
+        print(f"{failed} path(s) could not be removed; fix permissions and re-run `greenfield uninstall --yes`.", file=sys.stderr)
+        return 1
     print("Removed. .gitignore lines and research/greenfield/ were left in place.")
     return 0
 
