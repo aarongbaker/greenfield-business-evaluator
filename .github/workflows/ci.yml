@@ -42,3 +42,17 @@ jobs:
       # Skipped until W7 adds tests/test_fuzz.py.
       - if: hashFiles('tests/test_fuzz.py') != ''
         run: GF_FUZZ_ITERATIONS=20000 python -m unittest tests.test_fuzz -v
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with: {python-version: "3.13"}
+      # Test-only dependency; the runtime stays standard library only.
+      - run: python -m pip install playwright && python -m playwright install --with-deps chromium
+      - run: mkdir -p shots && GF_REQUIRE_BROWSER=1 GF_SCREENSHOT_DIR=shots python -m unittest tests.test_dashboard_browser -v
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with: {name: mission-control-screenshots, path: shots/}

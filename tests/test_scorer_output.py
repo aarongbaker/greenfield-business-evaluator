@@ -142,6 +142,76 @@ class FieldTests(unittest.TestCase):
         self.assertEqual({k: new[k] for k in old}, old)
 
 
+def apply_gap(data, result):
+    """Apply every requirement verdict_gap() lists to data and the warnings score() would see."""
+    data = copy.deepcopy(data)
+    warnings = [w for w in result["warnings"]]
+    for item in scorer.verdict_gap(result):
+        k = item["key"]
+        if "field" in item:
+            data["pillars"][item["pillar"]][item["field"]] = item["needed"]
+        elif k == "web":
+            data["execution"]["web_used"] = True
+        elif k.startswith("blocker:"):
+            for b in data["hard_blockers"]:
+                if b.get("id") == k[8:]:
+                    b["status"] = "resolved"
+        elif k.startswith("gate:"):
+            data.setdefault("pilot_gates", {})[k[5:]] = {"passed": True, "evidence_ids": ["EV-x"]}
+        elif k == "source_review":
+            data["verification_report"] = "report.json"
+            warnings = [w for w in warnings if not w.startswith(("Unreviewed public source", "Could not validate source"))]
+        elif k == "reattest":
+            warnings = [w for w in warnings if "gf_ledger.py reattest" not in w]
+    return data, [w for w in warnings if not w.startswith(("Unmet business-model", "Public citations", "No actual", "No live"))]
+
+
+class VerdictGapTests(unittest.TestCase):
+    def cases(self):
+        paths = [TEMPLATE_PATH, ROOT / "skill/assets/demo-research/evaluation.json", *sorted(FIXTURES.glob("*.json"))]
+        for path in paths:
+            result, errors, _ = scorer.score_file(path)
+            if result:
+                yield path.name, json.loads(path.read_text()), result
+        with tempfile.TemporaryDirectory() as d:
+            base = pathlib.Path(d)
+            for q in (1, 2, 4):
+                data = receipt_data(base, q)
+                data["project"]["business_model"] = "bootstrapped_saas"
+                data["hard_blockers"] = [{"id": "B9", "status": "plausible", "fatal": True, "finding": "x", "source_ids": []}]
+                yield f"receipts-q{q}", data, scored(data, base)
+
+    def test_verdict_gap_reaches_target(self):
+        seen = set()
+        for name, data, result in self.cases():
+            seen.add(result["decision"])
+            fixed, warnings = apply_gap(data, result)
+            after = scorer.score(fixed, list(warnings))
+            if result["decision"] == "NO_GO":  # the gap names only the blocker; once it is resolved the next gap applies
+                self.assertNotEqual(after["decision"], "NO_GO", name)
+                fixed, warnings = apply_gap(fixed, after)
+                after = scorer.score(fixed, warnings)
+            self.assertEqual(after["decision"], "PROCEED_TO_BOUNDED_PILOT", name)
+        self.assertTrue({"RESEARCH_INCOMPLETE", "VALIDATE_BEFORE_BUILD", "NO_GO", "PIVOT"} <= seen, seen)
+
+    def test_verdict_gap_empty_when_proceed(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = pathlib.Path(d)
+            result = scored(receipt_data(base, 4), base)
+        self.assertEqual(result["decision"], "PROCEED_TO_BOUNDED_PILOT")
+        self.assertEqual(scorer.verdict_gap(result), [])
+        self.assertNotIn("To reach", scorer.render_text(result, color=False))
+
+    def test_gap_order_and_shared_text(self):
+        result = scorer.score_file(TEMPLATE_PATH)[0]
+        gap = scorer.verdict_gap(result)
+        self.assertEqual([i["current"] for i in gap[:8]], [None] * 8)  # unassessed pillars first
+        no_go = scorer.score_file(FIXTURES / "no-go.json")[0]
+        self.assertEqual(scorer.verdict_gap(no_go), [{"key": "blocker:R1", "text": "Resolve blocker R1"}])
+        text = " ".join(scorer.render_text(no_go, color=False).split())
+        self.assertIn("To reach Proceed: " + scorer.gap_text(scorer.verdict_gap(no_go)), text)
+
+
 class WarningTests(unittest.TestCase):
     def test_groups_and_order(self):
         out = scorer.summarize_warnings(["pillars.timing: no claims linked", "Other", "pillars.market: no claims linked",

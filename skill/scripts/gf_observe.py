@@ -25,13 +25,16 @@ try:
     import fcntl
 except ImportError:  # Windows: no lock, W26 gives the clear error
     fcntl = None
-from gf_common import VERSION, GFError, atomic_write_json, gitignore_missing, report
-from gf_roles import ROLES as _ROLES, normalize
+from gf_common import VERSION, GFError, atomic_write_json, gitignore_missing, load_json, report, resolve_inside
+from gf_roles import ROLES as _ROLES, REDTEAM, SPECIALISTS, normalize
 
 AGENTS = [r.claude_id for r in _ROLES]
 VALID_EVENTS = {"run_started", "run_completed", "run_failed", "agent_started", "agent_completed", "agent_failed", "tool_started", "tool_completed", "tool_failed", "source_seen", "artifact_created", "note", "token_usage", "warning", "task_planned", "task_started", "task_completed", "task_failed", "run_resumed"}
 VALID_RUN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 DEFAULT_PATH = ".greenfield-observe"
+ASSETS = Path(__file__).resolve().parent.parent / "assets"
+DEMO_RESEARCH = "demo-research"  # bundled sample folder under ASSETS, labelled as sample data
+PROVIDER_NAMES = {"claude": "Claude Code", "codex": "Codex", "both": "Claude Code + Codex"}  # demo/manual stay hidden
 
 
 def now():
@@ -80,7 +83,7 @@ def private_dir(path):
     """Create path; folders at or below .greenfield-observe are made 0700 whatever the umask."""
     for d in reversed([path, *path.parents]):
         if DEFAULT_PATH in d.parts and not d.exists():
-            d.mkdir(mode=0o700)
+            d.mkdir(mode=0o700, exist_ok=True)  # another thread may win the race
             d.chmod(0o700)
     path.mkdir(parents=True, exist_ok=True)
 
@@ -166,14 +169,36 @@ def running_run(project):
     return (rid, meta) if state["status"] == "running" and not meta.get("demo") else None
 
 
-def new_run(project, idea, provider="both", demo=False, replace=False):
+def research_rel(project, path):
+    """research_dir as stored in meta.json: relative to the project root; GFError if it escapes."""
+    root = Path(project).expanduser().resolve()
+    return resolve_inside(root, path).relative_to(root).as_posix()
+
+
+def research_base(project, meta):
+    """Demo runs read the bundled sample folder; real runs read inside the project."""
+    return ASSETS if meta.get("demo") else Path(project).expanduser().resolve()
+
+
+def link_research(project, run_id, path):
+    meta_path, _ = file_paths(project, run_id)
+    meta = load_json(meta_path)
+    if meta.get("demo"):
+        raise GFError("demo runs always read the bundled sample folder", hint="start a real run to link your research")
+    meta["research_dir"] = research_rel(project, path)
+    atomic_json(meta_path, meta)
+    return meta["research_dir"]
+
+
+def new_run(project, idea, provider="both", demo=False, replace=False, research_dir=None):
     run_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:6]
     meta_path, _ = file_paths(project, run_id)
+    extra = {"research_dir": DEMO_RESEARCH if demo else research_rel(project, research_dir)} if demo or research_dir else {}
     with active_lock(project):  # check-then-write must be atomic across processes
         old = running_run(project)
         if old and not demo and not replace:
             raise ActiveRunError(old[0], old[1].get("idea", ""), old[1].get("created_at"))
-        atomic_json(meta_path, {"run_id": run_id, "idea": safe_text(idea, 200), "provider": provider, "created_at": now(), "demo": bool(demo)})
+        atomic_json(meta_path, {"run_id": run_id, "idea": safe_text(idea, 200), "provider": provider, "created_at": now(), "demo": bool(demo), **extra})
         if old and not demo:
             emit(project, old[0], "warning", summary=f"Superseded by run {run_id}")
         if not (old and demo):  # sample data never displaces a real run
@@ -220,7 +245,26 @@ def parse_events(project, run_id):
     return items
 
 
-def current_state(project, run_id):
+def reconcile(agent, task):
+    """One shown status from the hook status and the checkpoint status (W20 table): label, tone, note, warn."""
+    s = agent["status"]
+    d = lambda label, tone, note="", warn=False: {"label": label, "tone": tone, "note": note, "warn": warn}
+    if s == "failed" or task == "failed":
+        return d("Failed", "bad", f"Agent failed: {agent['activity']}" if s == "failed" else "Checkpoint failed", True)
+    if s == "completed":
+        return d("Done", "good", *{"completed": ("Checkpointed",), "queued": ("Not checkpointed", True), "running": ("Not checkpointed", True)}.get(task, ()))
+    if s == "running":
+        return d("Running", "accent", agent["activity"])
+    if s == "quiet":
+        return d("Quiet", "neutral", "No activity for 5 min; not a failure")
+    if task == "running":
+        return d("Claimed", "accent", "Claimed in checkpoints, no hook events yet")
+    if task == "completed":
+        return d("Done", "good", "From checkpoint (reused or hooks off)")
+    return d("Queued", "neutral", "Waits for all 8 specialists" if agent["name"] == REDTEAM.claude_id else "")
+
+
+def current_state(project, run_id, since=None):
     meta_path, _ = file_paths(project, run_id)
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     events = parse_events(project, run_id)
@@ -277,16 +321,187 @@ def current_state(project, run_id):
             estimated_cost_usd = round(total_tokens * rate / 1_000_000, 4)
         task_info = {'tasks': {role: info.get('status') for role,info in task_doc['tasks'].items()},
                      'coverage': task_doc.get('coverage',{}),
+                     'attempts': {role: info.get('attempts', 0) for role, info in task_doc['tasks'].items()},
                      'completed': sum(info.get('status')=='completed' for info in task_doc['tasks'].values())}
-    except (OSError, ValueError, KeyError, TypeError):
+        task_info['mtime_ns'] = (storage(project) / 'runs' / run_id / 'task-manifest.json').stat().st_mtime_ns
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         pass
-    return {"meta": meta, "status": status, "agents": list(agents.values()), "events": events[-300:][::-1], "event_count": len(events), "checkpoints": task_info,
+    tasks = task_info.get("tasks", {})
+    for a in agents.values():
+        a["display"] = reconcile(a, tasks.get(a["name"]))
+    hooked = any(e.get("provider") in ("claude", "codex", "codex-cli") and e.get("agent") in agents for e in events)
+    ends = [e.get("timestamp") for e in events if e.get("event") in ("run_completed", "run_failed")]
+    try:
+        decision_etag = decision_view(project, run_id)["etag"]
+    except Exception:  # the decision panel reports its own errors; state must still load
+        decision_etag = None
+    rev = hashlib.sha256(repr((len(events), events[-1].get("id") if events else None, task_info.get("mtime_ns"), decision_etag,
+                               tuple(a["status"] == "quiet" for a in agents.values()))).encode()).hexdigest()[:16]
+    feed = {"events": events[-300:][::-1]}
+    if since is not None:
+        at = next((i for i in range(len(events) - 1, -1, -1) if events[i].get("id") == since), None)
+        feed = {"events_delta": events[-300:][::-1] if at is None else events[at + 1:][-300:][::-1], "reset": at is None}
+    return {"meta": meta, "status": status, "agents": list(agents.values()), **feed, "event_count": len(events), "checkpoints": task_info,
+            "rev": rev, "decision_etag": decision_etag, "provider_name": PROVIDER_NAMES.get(meta.get("provider"), ""),
+            "hooks_off": not hooked and any(v in ("running", "completed") for v in tasks.values()),
+            "run_window": {"start": meta.get("created_at"), "end": ends[-1] if ends else None},
             "roles": [{"id": r.claude_id, "name": r.display, "pillar": r.pillar} for r in _ROLES],
             "stats": {"started_agents": len(started), "finished_agents": sum(a["status"] == "completed" for a in agents.values()),
                       "active_agents": sum(a["status"] in ("running", "quiet") for a in agents.values()),
                       "tool_calls": sum(e["event"] == "tool_started" for e in events),
                       "source_events": sum(e["event"] == "source_seen" for e in events), "reported_tokens": total_tokens, "estimated_cost_usd": estimated_cost_usd,
                       "warnings": sum(e["event"] in ("warning", "tool_failed", "agent_failed") for e in events)}}
+
+
+_decision_cache = {}  # (project, run) -> (key, view, extra input paths)
+
+
+def _stat(path):
+    try:
+        st = path.stat()
+        return st.st_mtime_ns, st.st_size
+    except (OSError, ValueError):
+        return None
+
+
+def _research(project, run_id):
+    """(meta, base, research folder) or a non-ok state name in place of the folder."""
+    meta = load_json(file_paths(project, run_id)[0])
+    rd, base = meta.get("research_dir"), research_base(project, meta)
+    if not isinstance(rd, str) or not rd:
+        return meta, base, "no_research_dir"
+    try:
+        folder = resolve_inside(base, rd)
+        resolve_inside(base, folder / "evaluation.json")  # a symlinked evaluation must not leave the project either
+    except GFError:
+        return meta, base, "invalid_path"
+    return meta, base, folder
+
+
+def decision_view(project, run_id):
+    """Verdict recomputed from evaluation.json (never read from decision.json), cached on input mtimes and sizes."""
+    project = Path(project).expanduser().resolve()
+    meta, base, folder = _research(project, run_id)
+    if isinstance(folder, str):
+        view = _decision_state(project, run_id, meta, folder)
+        view["etag"] = hashlib.sha256(repr((folder, meta.get("research_dir"), view["next_step"])).encode()).hexdigest()[:16]
+        return view
+    ev, dec = folder / "evaluation.json", folder / "decision.json"
+    hit = _decision_cache.get((project, run_id))
+    pre = (str(folder), _stat(ev), _stat(dec))
+    if hit and hit[0] == pre + tuple(_stat(p) for p in hit[2]):
+        return hit[1]
+    view, extra = _decide(project, run_id, meta, base, folder, ev, dec)
+    key = pre + tuple(_stat(p) for p in extra)
+    view["etag"] = hashlib.sha256(repr(key).encode()).hexdigest()[:16]
+    _decision_cache[(project, run_id)] = (key, view, extra)
+    return view
+
+
+def _decision_state(project, run_id, meta, state, **fields):
+    rd = meta.get("research_dir") if isinstance(meta.get("research_dir"), str) else None
+    if state == "no_research_dir":
+        found = sorted(project.glob("research/greenfield/*/evaluation.json"))
+        guess = found[0].parent.relative_to(project).as_posix() if len(found) == 1 else "research/greenfield/<slug>"  # suggest, never guess
+        step = {"text": "Link this run to its research folder", "command": f"gf_observe.py link --research-dir {guess} --run {run_id}"}
+    elif state == "invalid_path":
+        step = {"text": "The linked folder is outside this project; link one inside it", "command": f"gf_observe.py link --research-dir research/greenfield/<slug> --run {run_id}"}
+    elif state == "no_evaluation":
+        step = {"text": "Specialists still running, or write evaluation.json from the template", "command": f"cp assets/evaluation-template.json {rd}/evaluation.json"}
+    else:
+        step = {"text": "Fix the listed errors, then re-run the scorer with --json", "command": f"score_project.py {rd}/evaluation.json --json"}
+    return {"state": state, "research_dir": rd, "demo": bool(meta.get("demo")), "next_step": step, "errors": [], **fields}
+
+
+def _decide(project, run_id, meta, base, folder, ev, dec):
+    from score_project import VERDICTS, gap_text, recompute_decision, summarize_warnings, verdict_gap
+    from gf_portfolio import stored_mismatch
+    if not ev.is_file():
+        return _decision_state(project, run_id, meta, "no_evaluation"), ()
+    try:
+        data = load_json(ev)
+    except GFError:
+        data = {}
+    extra = []
+    for key in ("evidence_ledger", "verification_report"):  # the validator reads these, so they key the cache and staleness
+        with contextlib.suppress(GFError, TypeError):
+            if isinstance(data.get(key), str) and data[key]:
+                extra.append(resolve_inside(folder, data[key]))
+    result, errors, _ = recompute_decision(ev, base)
+    if errors:
+        return _decision_state(project, run_id, meta, "invalid", errors=[safe_text(e, 300) for e in errors[:10]], error_count=len(errors)), extra
+    rd = meta["research_dir"]
+    stored = {"present": dec.exists(), "decision": None, "matches": True}
+    stale = False
+    if stored["present"]:
+        try:
+            said, why = stored_mismatch(resolve_inside(base, dec), result)
+        except GFError:
+            said, why = None, "decision.json is outside the project"
+        stored.update(decision=said if isinstance(said, str) and said in VERDICTS else None, matches=why is None)
+        newest = max((s[0] for s in map(_stat, [ev, *extra]) if s), default=0)
+        stale = (_stat(dec) or (0,))[0] < newest
+    qs, es, d = result["quality_scores"], result["evidence_scores"], result["decision"]
+    exp = next((x for x in data.get("experiments") or [] if isinstance(x, dict)), None) if isinstance(data.get("experiments"), list) else None
+    bet = {"id": safe_text(exp.get("id"), 20), "text": safe_text(exp.get("hypothesis"), 200)} if exp and exp.get("hypothesis") else None
+    rescore = f"score_project.py {rd}/evaluation.json --json --output {rd}/decision.json"
+    unassessed = [p for p, q in qs.items() if q is None]
+    if stale or not stored["matches"]:
+        step = "Re-run the scorer to refresh decision.json"
+    elif d == "RESEARCH_INCOMPLETE" and unassessed:
+        step = f"{len(unassessed)} of {len(qs)} pillars unassessed: {', '.join(unassessed)}"
+    elif result["missing_pilot_gates"] and d != "NO_GO":
+        step = f"Close pilot gate {result['missing_pilot_gates'][0]}, then re-score"
+    elif bet and d == "VALIDATE_BEFORE_BUILD":
+        step = f"Run {bet['id'] or 'the first experiment'} and record the result in the ledger, then re-score"
+    else:
+        step = result["next_step"]
+    warnings = summarize_warnings(result["warnings"])
+    gap = verdict_gap(result)
+    return {"state": "ok", "research_dir": rd, "demo": bool(meta.get("demo")), "project": safe_text(result["project"], 120),
+            "verdict": {"decision": d, **VERDICTS[d], "headline": result["headline"], "reason": result["reason"]},
+            "verdicts": VERDICTS,
+            "scores": {"weighted_quality": result["weighted_quality_0_to_100"], "evidence_average": result["evidence_average_0_to_5"],
+                       "profile": result["business_model_profile"], "fatal_blockers": len(result["confirmed_fatal_blockers"])},
+            "pillars": [{"key": r.pillar, "name": r.display, "weight": result["pillar_weights"][r.pillar], "quality": qs[r.pillar], "evidence": es[r.pillar]} for r in SPECIALISTS],
+            "attention": {"confirmed_fatal": result["confirmed_fatal_blockers"], "plausible_fatal": result["unresolved_plausible_fatal_blockers"],
+                          "missing_pilot_gates": result["missing_pilot_gates"], "source_review_open": result["source_review_pending"],
+                          "warnings": [safe_text(w, 200) for w in warnings[:10]], "warning_count": len(result["warnings"])},
+            "gap": gap, "gap_text": gap_text(gap), "next_bet": bet, "next_step": {"text": step, "command": rescore},
+            "stored": stored, "stale": stale, "errors": []}, extra
+
+
+def evidence_view(project, run_id, pillar):
+    """Claims behind one pillar: ids, short text, vetted URL, dates and check results only, never page content."""
+    from gf_profiles import BASE
+    if pillar not in BASE:
+        return {"state": "invalid", "errors": ["unknown pillar"]}
+    project = Path(project).expanduser().resolve()
+    meta, _, folder = _research(project, run_id)
+    if isinstance(folder, str):
+        return {"state": folder}
+    if not (folder / "evaluation.json").is_file():
+        return {"state": "no_evaluation"}
+    try:
+        data = load_json(folder / "evaluation.json")
+    except GFError as e:
+        return {"state": "invalid", "errors": [safe_text(e, 300)]}
+    checks, report = {}, data.get("verification_report")
+    with contextlib.suppress(GFError, TypeError):
+        if isinstance(report, str) and report:
+            rows = load_json(resolve_inside(folder, report)).get("claims")
+            checks = {r["claim_id"]: r for r in rows if isinstance(r, dict) and isinstance(r.get("claim_id"), str)} if isinstance(rows, list) else {}
+    item = (data.get("pillars") or {}).get(pillar) if isinstance(data.get("pillars"), dict) else None
+    item = item if isinstance(item, dict) else {}
+    linked = {c for c in item.get("claim_ids") or [] if isinstance(c, str)} if isinstance(item.get("claim_ids"), list) else set()
+    claims = [c for c in data.get("claims") or [] if isinstance(c, dict) and (c.get("pillar") == pillar or c.get("id") in linked)] if isinstance(data.get("claims"), list) else []
+    status = lambda v: safe_text(v, 30) if isinstance(v, str) else None
+    out = [{"id": safe_text(c.get("id"), 40), "text": safe_text(c.get("statement"), 160), "url": safe_url(c.get("source_url")),
+            "published": status(c.get("published_date")), "fetch_status": status(checks.get(c.get("id"), {}).get("fetch_status")),
+            "excerpt_check": status(checks.get(c.get("id"), {}).get("excerpt_check"))} for c in claims[:100]]
+    behaviors = item.get("behaviors") if isinstance(item.get("behaviors"), list) else []
+    receipts = [safe_text(b["ledger_event_id"], 40) for b in behaviors if isinstance(b, dict) and isinstance(b.get("ledger_event_id"), str)]
+    return {"state": "ok", "pillar": pillar, "claims": out, "receipts": receipts, "report": bool(checks)}
 
 
 def hook_event(project, provider, raw):
@@ -405,23 +620,46 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except (ValueError, OSError):
                     pass
             return self._json({"runs": items, "active": active_run(self.server.project)})
-        if path.path == "/api/state":
-            run_id = parse_qs(path.query).get("run", [active_run(self.server.project)])[0]
+        q = parse_qs(path.query)
+        if path.path in ("/api/state", "/api/decision", "/api/evidence"):
+            run_id = q.get("run", [active_run(self.server.project)])[0]
             if not run_id or not VALID_RUN.fullmatch(run_id):
                 return self._json({"empty": True})
             try:
-                return self._json(current_state(self.server.project, run_id))
+                if path.path == "/api/state":
+                    since = q.get("since", [None])[0]
+                    state = current_state(self.server.project, run_id, since=since[:64] if since else None)
+                    return self._json(state, etag=state["rev"])
+                view = decision_view(self.server.project, run_id) if path.path == "/api/decision" else \
+                    evidence_view(self.server.project, run_id, q.get("pillar", [""])[0])
+                return self._json(view, etag=view.get("etag"))
             except (ValueError, OSError):
                 return self.send_error(404)
+            except Exception as e:  # never a 500 or a traceback: bad inputs are reported as a state
+                return self._json({"state": "invalid", "errors": [f"internal error ({type(e).__name__})"]})
         self.send_error(404)
-    def _json(self, data):
-        body = json.dumps(data, separators=(",", ":")).encode()
+    def _json(self, data, etag=None):
+        body = None
+        if etag is None:
+            body = json.dumps(data, separators=(",", ":")).encode()
+            etag = hashlib.sha256(body).hexdigest()[:16]
+        tag = f'"{etag}"'
+        if tag in [t.strip() for t in (self.headers.get("If-None-Match") or "").split(",")]:
+            self.send_response(304)
+            self.send_header("ETag", tag)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+        body = body or json.dumps(data, separators=(",", ":")).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("ETag", tag)
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != "HEAD":
+            self.wfile.write(body)
     def log_message(self, *_args):
         return
 
@@ -441,6 +679,9 @@ def main(argv=None):
     p.add_argument("--idea", required=True)
     p.add_argument("--provider", default="both", choices=("both", "claude", "codex"))
     p.add_argument("--new", action="store_true", help="replace the active run if it is still running")
+    p.add_argument("--research-dir", help="research folder this run produces, inside the project")
+    p = add_cli(sub, "link", run=True)
+    p.add_argument("--research-dir", required=True, help="research folder this run produces, inside the project")
     p = add_cli(sub, "serve")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--allow-host", action="append", default=[], help="extra Host name to accept (port forwarding, tunnels)")
@@ -461,11 +702,18 @@ def main(argv=None):
     if args.command == "start":
         tighten(project)
         try:
-            rid = new_run(project, args.idea, args.provider, replace=args.new)
-        except ActiveRunError as e:
+            rid = new_run(project, args.idea, args.provider, replace=args.new, research_dir=args.research_dir)
+        except GFError as e:
             return report(e, stream=sys.stderr)
         git_ignore_hint(project)
         print(rid)
+    elif args.command == "link":
+        rid = args.run or active_run(project)
+        if not rid: parser.error("No active run; use 'start' first")
+        try:
+            print(link_research(project, rid, args.research_dir))
+        except ValueError as e:  # GFError, or a malformed run id
+            return report(e, stream=sys.stderr)
     elif args.command == "serve":
         if args.port < 1 or args.port > 65535:
             parser.error("Port must be 1–65535")
@@ -499,7 +747,7 @@ def main(argv=None):
         count = ingest_codex(project, rid, sys.stdin)
         print(f"Captured {count} sanitized Codex events", file=sys.stderr)
     elif args.command == "demo":
-        rid = new_run(project, "DEMO · B2B compensation benchmarking AI", "demo", True)
+        rid = new_run(project, "Route planning for independent commercial laundries", "demo", True)
         agents = AGENTS[:-1]
         for i, name in enumerate(agents):
             emit(project, rid, "agent_started", agent=name, provider="demo", summary="Sample agent started")
