@@ -1,4 +1,4 @@
-● RESEARCH INCOMPLETE   REPLACE_PROJECT_NAME · as of 2026-10-23
+● RESEARCH INCOMPLETE   REPLACE_PROJECT_NAME · as of not started
 Research incomplete: 8 of 8 pillars unassessed, no live web research
 
 Weighted quality — / 100 (incomplete)   Evidence avg 0.0/5   Fatal blockers 0
@@ -13,13 +13,15 @@ competition    10  — not assessed  ░░░░░ 0
 execution       5  — not assessed  ░░░░░ 0
 timing          5  — not assessed  ░░░░░ 0
 
-! 11 warnings
+! 12 warnings
   • Could not validate source review ledger/report: GFError
   • No actual subagents recorded: use 'single-agent fallback', not 'parallel fa…
   • No live web research performed; prices, market sizes and competitor landsca…
   • 8 pillars have no linked claims: competition, distribution, economics, exec…
+  • Not started: set as_of to today's date and replace any REPLACE_ project fie…
 To reach Proceed: quality 5: problem; quality 4: market, value, economics;
   quality 3: distribution, competition, execution, timing; evidence 3: problem,
-  market, value, economics, distribution; run live web research
+  market, value, economics, distribution; start the evaluation; run live web
+  research
 Next: Fill pillar quality scores and run live web research, then re-score.
 Heuristic triage, not a probability of commercial success.

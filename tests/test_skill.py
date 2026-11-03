@@ -49,6 +49,7 @@ def proceed_data(event_id, ledger="experiments.jsonl"):
 
 def sample():
     data = copy.deepcopy(TEMPLATE)
+    data["as_of"] = "2026-10-23"
     data["project"] = {"name": "Fixture", "idea": "Test concept", "initial_customer": "Small B2B buyers", "geography": "US", "business_type": "B2B SaaS", "goal": "bootstrapped"}
     data["execution"]["web_used"] = True
     data["execution"]["mode"] = "single-agent fallback"

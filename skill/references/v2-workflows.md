@@ -1,5 +1,7 @@
 # v2 operational protocol: evidence, experiments, models, checkpoints, portfolio
 
+`greenfield` on your PATH is a shortcut for the `python3 <skill dir>/scripts/greenfield.py` form used here.
+
 **Every command is optional to perform only when the host has shell access and the user authorized file changes.** Core research may still proceed if these scripts cannot run, but a machine-backed pilot decision must not be claimed without required evidence. Python 3.11+, macOS/Linux (the append-only ledger and run controller use `fcntl`). No extra packages.
 
 ## A. Source inspection (P0)
@@ -8,7 +10,7 @@
 2. From the project research directory, run:
 
 ```bash
-python3 <skill>/scripts/gf_evidence.py evaluation.json --output source-verification.json --allow-network
+python3 <skill dir>/scripts/greenfield.py sources check evaluation.json --output source-verification.json --allow-network --json
 ```
 
 Without `--allow-network`, the script only checks publication date/origin metadata. `--allow-network` reads **public HTTP(S) HTML/text only**, with download/time/redirect bounds, no authenticated sessions, and a conservative private-host filter; it connects only to the vetted IP on ports 80 and 443, so DNS rebinding cannot redirect it to an internal host. Do not run it against confidential URLs or internal services. PDFs, JavaScript-only sites, unavailable and paywalled sources require manual review. It is still not a hardened universal SSRF boundary: fetched text is untrusted, and text matching is not truth.
@@ -16,10 +18,10 @@ Without `--allow-network`, the script only checks publication date/origin metada
 3. Treat `excerpt_check=found` as **text retrieval success only**. It is not factual proof or semantic entailment. A human can read the source and record a review against the exact report bytes:
 
 ```bash
-python3 <skill>/scripts/gf_ledger.py record --ledger experiment-ledger.jsonl \
-  --kind source_review --project 'Example idea' --hypothesis 'Review claim C1' \
+python3 <skill dir>/scripts/greenfield.py ledger record --ledger experiment-ledger.jsonl \
+  --kind source_review --project-name 'Example idea' --hypothesis 'Review claim C1' \
   --claim-id C1 --outcome supported --attester 'Actual reviewer name' \
-  --artifact source-verification.json --notes 'Why the specific claim is supported'
+  --artifact source-verification.json --notes 'Why the specific claim is supported' --json
 ```
 
 `contradicted` and `unclear` are also valid. Do not simulate a human reviewer or silently mark sources verified. The scorer checks reviewed public claims in the exact current report against the ledger and blocks pilot approval for unreviewed source-dependent claims.
@@ -30,20 +32,20 @@ Use one append-only ledger per greenfield project. Every record has a UTC time, 
 
 ```bash
 # Hypothesis and failure need no behavioral receipt
-python3 <skill>/scripts/gf_ledger.py record --ledger experiment-ledger.jsonl \
-  --kind hypothesis --project 'Example idea' --hypothesis 'Buyers pay to avoid manual audits'
+python3 <skill dir>/scripts/greenfield.py ledger record --ledger experiment-ledger.jsonl \
+  --kind hypothesis --project-name 'Example idea' --hypothesis 'Buyers pay to avoid manual audits' --json
 
 # After a real customer action, a real human must sign off and supply local receipt
-python3 <skill>/scripts/gf_ledger.py record --ledger experiment-ledger.jsonl \
-  --kind paid_test --project 'Example idea' --hypothesis 'Price accepted' \
+python3 <skill dir>/scripts/greenfield.py ledger record --ledger experiment-ledger.jsonl \
+  --kind paid_test --project-name 'Example idea' --hypothesis 'Price accepted' \
   --outcome 'Actual observed result' --attester 'Human reviewer' \
-  --artifact ./private-receipts/test.txt --pillar problem --pillar economics
+  --artifact ./private-receipts/test.txt --pillar problem --pillar economics --json
 
-python3 <skill>/scripts/gf_ledger.py verify --ledger experiment-ledger.jsonl
-python3 <skill>/scripts/gf_ledger.py summary --ledger experiment-ledger.jsonl
+python3 <skill dir>/scripts/greenfield.py ledger verify --ledger experiment-ledger.jsonl --json
+python3 <skill dir>/scripts/greenfield.py ledger summary --ledger experiment-ledger.jsonl --json
 ```
 
-Behavior receipts and source reviews must be recorded by a person at a terminal: the command shows a summary and a one-time code to type back, then signs the event with a local key (`~/.config/greenfield/attest.key`, or `$GF_CONFIG_DIR/attest.key`). Agents have no terminal and are refused. Receipt and report paths must sit inside the ledger's folder and are stored relative, so the folder can be moved or shared. Receipts verify only where the key is; a teammate can point `GF_ATTEST_KEY_FILE` at a copy. Ledgers recorded before signing need a one-time `gf_ledger.py reattest --ledger experiment-ledger.jsonl`.
+Behavior receipts and source reviews must be recorded by a person at a terminal: the command shows a summary and a one-time code to type back, then signs the event with a local key (`~/.config/greenfield/attest.key`, or `$GF_CONFIG_DIR/attest.key`). Agents have no terminal and are refused; the PreToolUse guard (`greenfield hooks install`) also blocks their attempts to run `ledger record --attester` or touch the ledger and key files. Receipt and report paths must sit inside the ledger's folder and are stored relative, so the folder can be moved or shared. Receipts verify only where the key is; a teammate can point `GF_ATTEST_KEY_FILE` at a copy. Ledgers recorded before signing need a one-time `greenfield ledger reattest --ledger experiment-ledger.jsonl`.
 
 The resulting `EV-...` event ID must be put into a pillar behavior's `ledger_event_id` to qualify for evidence 3+. The behavioral observation must also have `kind`, `description`, `observed_at`, `source_or_artifact`, and `verified: true` in `evaluation.json`. A customer interview without an observed action is normally evidence 1, not 3. Do not place secret receipts or personally identifying interview data in public research folders. Store consent and retention rules separately where necessary.
 
@@ -67,13 +69,13 @@ Profiles alter **heuristic weights and bounded-pilot gates**, not probability fo
 Start Mission Control first (see top-level OBSERVABILITY.md), then:
 
 ```bash
-python3 <skill>/scripts/gf_runs.py --project . plan
-python3 <skill>/scripts/gf_runs.py --project . claim --role gf-problem
+python3 <skill dir>/scripts/greenfield.py task plan --json
+python3 <skill dir>/scripts/greenfield.py task claim --role gf-problem --json
 # Orchestrator actually delegates to runtime agent; write an authentic specialist summary.
-python3 <skill>/scripts/gf_runs.py --project . complete --role gf-problem --artifact research/greenfield/idea/specialists/gf-problem.md
-python3 <skill>/scripts/gf_runs.py --project . resume --freshness-hours 72
-python3 <skill>/scripts/gf_runs.py --project . coverage --evaluation research/greenfield/idea/evaluation.json --verification-report research/greenfield/idea/source-verification.json
-python3 <skill>/scripts/gf_runs.py --project . status --usd-per-million-tokens 5
+python3 <skill dir>/scripts/greenfield.py task complete --json --role gf-problem --artifact research/greenfield/idea/specialists/gf-problem.md
+python3 <skill dir>/scripts/greenfield.py task resume --freshness-hours 72 --json
+python3 <skill dir>/scripts/greenfield.py task coverage --evaluation research/greenfield/idea/evaluation.json --verification-report research/greenfield/idea/source-verification.json --json
+python3 <skill dir>/scripts/greenfield.py status --usd-per-million-tokens 5 --json
 ```
 
 No task is automatically launched. The skill orchestrator must actually invoke supported Claude or Codex delegation tools; the plan records claims/completions and resumes based on checksums + age. The red team task is blocked until the other eight have checkpointed. `--usd-per-million-tokens` is a user-supplied **blended illustrative rate**, and costs are approximate **only for reported tokens**; no official invoiced spend is inferred. The dashboard shows the number of artifact checkpoints and explicit claim coverage, not invented research percentages. Emit native lifecycle hooks rather than faking them.
@@ -85,8 +87,8 @@ Prepare a portfolio manifest following `assets/portfolio-template.json`. Referen
 Start from `assets/portfolio-template.json`; its `_help` keys say what each block needs, and the script exits 2 listing any placeholder still unfilled.
 
 ```bash
-python3 <skill>/scripts/gf_portfolio.py portfolio.json \
-  --output portfolio-ranking.json --markdown PORTFOLIO.md
+python3 <skill dir>/scripts/greenfield.py portfolio portfolio.json \
+  --output portfolio-ranking.json --markdown PORTFOLIO.md --json
 ```
 
 Results show a *heuristic priority index* under three sensitivity weighting sets (`balanced`, `capital_constrained`, `learning_first`). `NO_GO` and `RESEARCH_INCOMPLETE` cannot win a build ranking. Missing mandatory inputs are surfaced as an error, not replaced by synthetic values. Forecast low/base/high uses only user-provided buyer counts, 12-month per-buyer revenue, variable cost and fixed cost; outputs are deterministic arithmetic, **not predictive probabilities**. Never infer future customers, churn or margins absent evidence.
@@ -94,9 +96,9 @@ Results show a *heuristic priority index* under three sensitivity weighting sets
 ## Reproducible decision command
 
 ```bash
-python3 <skill>/scripts/score_project.py evaluation.json --json --output decision.json
+python3 <skill dir>/scripts/greenfield.py score evaluation.json --output decision.json --json
 ```
 
 For v2, core evidence ≥3 must reference intact real ledger receipts, source-dependent claims must be reviewed before bounded pilot authorization, and model-specific gates must have supported evidence. A passing score is not permission to spend, ship, process personal data or ignore regulation.
 
-To surface an explicitly assumed token-cost estimate in the dashboard, run `gf_runs.py --project . set-rate --usd-per-million-tokens <YOUR_BLENDED_RATE>`. If there are no provider-reported tokens, cost must remain unknown.
+To surface an explicitly assumed token-cost estimate in the dashboard, run `python3 <skill dir>/scripts/greenfield.py task set-rate --usd-per-million-tokens <YOUR_BLENDED_RATE> --json`. If there are no provider-reported tokens, cost must remain unknown.

@@ -15,7 +15,7 @@ import sys
 import textwrap
 from urllib.parse import urlparse
 from gf_profiles import BASE, PROFILES
-from gf_common import GFError, VERSION, atomic_write, finite_nonneg, load_json, report, resolve_inside
+from gf_common import old_entry, GFError, VERSION, atomic_write, finite_nonneg, load_json, report, resolve_inside
 from gf_ledger import UNCONFIRMED, verified_behavior, reviewed_claims
 
 PILLAR_WEIGHTS = BASE
@@ -124,8 +124,13 @@ def validate(data, base_dir=None):
         profile = 'general'
     if is_v2 and not isinstance(data.get('pilot_gates', {}), dict):
         errors.append('pilot_gates must be an object')
-    if not is_iso_date(data.get("as_of")):
+    if data.get("as_of") == "":  # the template's "not started" marker (W24): incomplete, not invalid
+        warnings.append("Not started: set as_of to today's date and replace any REPLACE_ project fields")
+    elif not is_iso_date(data.get("as_of")):
         errors.append("as_of must be an ISO YYYY-MM-DD date")
+    left = sorted(k for k, v in (project if isinstance(project, dict) else {}).items() if isinstance(v, str) and v.startswith("REPLACE_"))
+    if left and data.get("as_of") != "":
+        warnings.append("project." + ", project.".join(left) + " still hold REPLACE_ placeholders: fill them in")
     execution = data.get("execution")
     if not isinstance(execution, dict):
         errors.append("execution must be an object")
@@ -322,7 +327,7 @@ def score(data, warnings):
     if fatal:
         decision = "NO_GO"
         reason = "A sourced, confirmed, unresolved fatal blocker overrides the score."
-    elif not web or not complete:
+    elif not web or not complete or not data["as_of"] or any(isinstance(v, str) and v.startswith("REPLACE_") for v in data["project"].values()):
         decision = "RESEARCH_INCOMPLETE"
         reason = "Live research or necessary pillar assessments are missing; do not treat this as a launch decision."
     elif total < 50 and any(qs[p] <= 1 and ev[p] >= 3 for p in CORE):
@@ -463,6 +468,8 @@ def verdict_gap(result):
     item = lambda p, f, cur, n: {"key": f"{p}.{f}", "pillar": p, "field": f, "current": cur, "needed": n,
                                  "text": f"{p} {f} {'not assessed' if cur is None else cur} → {n}"}
     out = [item(p, "quality", None, need[p]) for p in qs if qs[p] is None]
+    if not result["as_of"] or result["project"].startswith("REPLACE_"):
+        out.append({"key": "started", "text": "start the evaluation"})
     if not result["web_research_performed"]:
         out.append({"key": "web", "text": "run live web research"})
     out += [item(p, "quality", qs[p], need[p]) for p in qs if qs[p] is not None and need[p] > qs[p]]
@@ -538,7 +545,7 @@ def render_text(result, *, color, width=80, glyphs="unicode", all_warnings=False
     line = lambda text: clip(text, width, g["more"])
     verdict = VERDICTS.get(result["decision"], {"label": result["decision"], "tone": "neutral"})
     badge = f"{g['dot']} {verdict['label'].upper()}"
-    title = clip(f"{result['project']} {g['sep']} as of {result['as_of']}", max(10, width - len(badge) - 3), g["more"])
+    title = clip(f"{result['project']} {g['sep']} as of {result['as_of'] or 'not started'}", max(10, width - len(badge) - 3), g["more"])
     if color:
         badge = f"\033[1;{TONES[verdict['tone']]}m{badge}\033[0m"
     total = result["weighted_quality_0_to_100"]
@@ -646,4 +653,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(old_entry(main, "score_project.py", "greenfield score"))

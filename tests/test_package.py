@@ -72,7 +72,7 @@ class PackageTests(unittest.TestCase):
     def test_single_version_source(self):
         literal = re.compile(r"""['"]\d+\.\d+\.\d+['"]""")
         for path in ROOT.rglob("*.py"):
-            if ".git" in path.parts or path.name == "gf_common.py":
+            if ".git" in path.parts or path.name == "_version.py":
                 continue
             with self.subTest(file=str(path.relative_to(ROOT))):
                 self.assertEqual(literal.findall(path.read_text(encoding="utf-8")), [])
