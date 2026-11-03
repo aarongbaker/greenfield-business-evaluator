@@ -1,184 +1,207 @@
-# Greenfield Business Evaluator v2 Complete (Claude Code + Codex)
+# Greenfield Business Evaluator
 
-**Research-first due diligence for a business idea before you build, with optional live local Mission Control.** One shared [Agent Skills](https://agentskills.io/specification) workflow, optional native multi-agent roles in each coding assistant, independent adversarial review, and a deterministic (non-predictive) investment decision tool.
+Research-first due diligence for business ideas, run inside **Claude Code** or **Codex** before any code is written.
 
-**Verified against published Claude Code and Codex skill/subagent documentation on October 23, 2026.** This is a packaged skill, not an autonomous commercial-data provider or a substitute for talking to customers.
+Greenfield Business Evaluator is an [Agent Skill](https://agentskills.io/specification) that turns your coding assistant into a structured diligence team. Eight independent specialists research the idea, a red team challenges their findings, and a deterministic scorer produces a go/no-go recommendation backed by an auditable evidence trail.
 
+## Features
 
-## Complete v2 capabilities (all five roadmap pillars)
+- **Multi-agent research.** Eight specialist roles plus an independent red team, run in parallel where the host supports subagents and sequentially otherwise.
+- **Evidence-weighted scoring.** Every pillar is scored separately for *quality* and *strength of evidence*, so an attractive market estimate is never confused with proof that buyers will pay.
+- **Business model profiles.** Weights and pilot gates tuned for general, bootstrapped SaaS, venture startup, marketplace, services, and regulated businesses.
+- **Source verification.** Optionally fetches public sources to check quoted excerpts, publication age, and duplicate origins.
+- **Experiment ledger.** Append-only, SHA-256-linked records of hypotheses, interviews, paid tests, and decision revisions.
+- **Resumable runs.** Checkpointed specialist tasks with artifact checksums and freshness checks.
+- **Portfolio comparison.** Rank multiple ideas with sensitivity analysis and input-driven 12-month scenarios.
+- **Mission Control.** An optional local dashboard showing live specialist activity, sources, and warnings.
 
-| Feature | Working implementation | Limits |
-|---|---|---|
-| Public evidence inspector | `skill/scripts/gf_evidence.py` fetches public HTML/text when explicitly enabled, checks excerpts and publication age, records duplicate reported origins | Lexical excerpt checks are not semantic fact verification; PDFs/paywalls require a person |
-| Append-only experiment learning | `skill/scripts/gf_ledger.py` creates SHA-256-linked hypothesis, interview, paid test, failure, decision revision, and human source-review records | File-access attackers can replace whole chains; named attestation is not proof of real payment |
-| Six business model profiles | `skill/scripts/gf_profiles.py` + `score_project.py` model weights and auditable pilot gates | Heuristic weights are not predictive probabilities |
-| Resume + Mission Control | `skill/scripts/gf_runs.py` checkpoints 9 real specialist tasks, verifies artifact checksums/freshness, shows claim coverage and optional estimated usage in the dashboard | It does not spawn agents; token-derived cost requires actual usage and user-supplied rate |
-| Portfolio scenarios | `skill/scripts/gf_portfolio.py` creates cross-idea ranking, sensitivity analysis and input-driven 12-month contribution scenarios | Does not predict sales or fabricate probabilities |
+All scripts use the Python standard library only. No API keys, packages, or telemetry uploads.
 
-**Start with** [v2 operational instructions](skill/references/v2-workflows.md). Python 3.10+ is required for these scripts. Mac and Linux are supported; the experiment ledger/task controller depend on `fcntl` file locking. Agent hooks remain opt-in and cannot bypass host sandbox controls.
+## Requirements
 
-### Quick usage after installing in your repository
+- Python 3.10+
+- macOS or Linux (the ledger and run controller use `fcntl` file locking)
+- Claude Code or Codex, ideally with web search enabled
+
+## Installation
 
 ```bash
-SKILL=.agents/skills/greenfield-business-evaluator
-# Start a real research run and checkpoint manifest
-python3 "$SKILL/scripts/gf_observe.py" start --project . --idea "Your idea"
-python3 "$SKILL/scripts/gf_runs.py" --project . plan
-python3 "$SKILL/scripts/gf_observe.py" serve --project .
-# In your normal Claude Code / Codex session, invoke the skill and delegate real agents.
-# Afterwards (from a populated research/greenfield/<idea> folder):
-python3 "$SKILL/scripts/gf_evidence.py" research/greenfield/<idea>/evaluation.json --output research/greenfield/<idea>/source-verification.json --allow-network
-python3 "$SKILL/scripts/score_project.py" research/greenfield/<idea>/evaluation.json --output research/greenfield/<idea>/decision.json
-# For multiple ideas, prepare a portfolio manifest based on skill/assets/portfolio-template.json.
-python3 "$SKILL/scripts/gf_portfolio.py" portfolio.json --output portfolio-ranking.json --markdown PORTFOLIO.md
+git clone https://github.com/aarongbaker/greenfield-business-evaluator.git
+cd greenfield-business-evaluator
 ```
 
-**Do not copy the literal `<idea>` path into a shell:** replace it with your actual project slug. Fetched pages and all attested behavioral experiments must be genuine. The tests use synthetic fixtures, not real customers. The project is not autonomous market validation: substantial research still requires internet-enabled Claude/Codex agents and real human approval for stronger evidence.
-
-## New in v2: Mission Control (working local dashboard)
-
-The optional `gf_observe.py` dashboard shows actual specialist lifecycle, short tool-type metadata, source records, warnings, and execution timelines. It does **not** run the subagents, invent their activity, read their internal reasoning, or upload telemetry. For complete installation, live-event hook setup, usage, Codex JSONL streaming, data-security notes, and clear remaining gaps, see [OBSERVABILITY.md](OBSERVABILITY.md).
+Install into a project for both assistants:
 
 ```bash
-# First install the shared skill, then opt in to project-local lifecycle hooks
-python3 install.py --platform both --scope project --project /path/to/repo
-python3 configure_hooks.py install --platform both --project /path/to/repo
-
-# In the repo, using the installed Codex-side copy (either copy works):
-python3 .agents/skills/greenfield-business-evaluator/scripts/gf_observe.py start --project . --idea "Your business idea"
-python3 .agents/skills/greenfield-business-evaluator/scripts/gf_observe.py serve --project .
-# Open http://127.0.0.1:8765
-```
-
-Hooks are **not** enabled by the ordinary installer. Codex project hooks must be reviewed/trusted in `/hooks`. A demo is available with the `demo` command and is explicitly labeled simulated. Local telemetry is stored at `<repo>/.greenfield-observe/` (gitignore it for private ideas).
-
-## Install (Python 3.10+, no packages or API keys required for installer)
-
-From the extracted `greenfield-business-evaluator/` folder:
-
-```bash
-# Install both into the current project, including platform subagent definitions
 python3 install.py --platform both --scope project --project /path/to/your/repo
+```
 
-# Optional: personal skill across all repos (run only if wanted)
+Common variations:
+
+```bash
+# Personal install, available in every repository
 python3 install.py --platform both --scope user
 
-# Install just one provider
+# Single assistant
 python3 install.py --platform claude --scope project --project .
 python3 install.py --platform codex --scope project --project .
 
-# Re-install a revised package, overwriting ONLY this package's owned files
+# Skill only, without the specialist role definitions
+python3 install.py --platform both --scope project --project . --no-agents
+
+# Reinstall, overwriting only files owned by this package
 python3 install.py --platform both --scope project --project . --force
 ```
 
-| Platform | Installed skill | Installed specialist role definitions |
+| Platform | Skill | Specialist roles |
 |---|---|---|
-| Claude Code (project) | `.claude/skills/greenfield-business-evaluator/SKILL.md` | `.claude/agents/gf-*.md` |
-| Codex (project) | `.agents/skills/greenfield-business-evaluator/SKILL.md` | `.codex/agents/gf-*.toml` |
-| Claude Code (personal) | `~/.claude/skills/greenfield-business-evaluator/SKILL.md` | `~/.claude/agents/gf-*.md` |
-| Codex (personal) | `~/.agents/skills/greenfield-business-evaluator/SKILL.md` | `~/.codex/agents/gf-*.toml` |
+| Claude Code (project) | `.claude/skills/greenfield-business-evaluator/` | `.claude/agents/gf-*.md` |
+| Codex (project) | `.agents/skills/greenfield-business-evaluator/` | `.codex/agents/gf-*.toml` |
+| Claude Code (user) | `~/.claude/skills/greenfield-business-evaluator/` | `~/.claude/agents/gf-*.md` |
+| Codex (user) | `~/.agents/skills/greenfield-business-evaluator/` | `~/.codex/agents/gf-*.toml` |
 
-The basic installer does not touch `config.toml`, `settings.json`, API keys, approval settings, product code, or internet permissions. Native subagent availability varies by version/environment and can be disabled. Skill instructions explicitly fall back to honest sequential execution. A file called `gf-market.toml` **defines** an agent role but doesn't itself spawn a parallel process.
+The installer never modifies `settings.json`, `config.toml`, API keys, approval settings, network permissions, or your product code.
 
-## Invoke
+## Usage
 
-**Claude Code:**
-
-```text
-/greenfield-business-evaluator Evaluate [your business idea]. Start in the US, B2B, deep market research; use parallel independent specialists and red-team the evidence. Do not code.
-```
-
-**Codex:**
+**Claude Code**
 
 ```text
-$greenfield-business-evaluator Evaluate [your business idea]. Perform live market research, challenge competitors and economics, fan out specialists when available, and decide whether to validate, pivot, or proceed to a bounded pilot. No implementation.
+/greenfield-business-evaluator Evaluate [your idea]. US market, B2B, deep research. Use parallel specialists and red-team the evidence. Do not write code.
 ```
 
-If the skill doesn't show up, restart the coding assistant and use the full invocation. Enable the host's **web browsing/search** tool when available; a valid skill file by itself cannot grant internet access. In Codex, local subagents are currently generally available; agents can be configured with `[agents]` in user config if desired, but a configuration change is not required by this installer. Claude Code supports normal subagents; **experimental agent teams** are optional and not required (teams use `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`).
+**Codex**
 
-## Optional: require diligence before a greenfield build
+```text
+$greenfield-business-evaluator Evaluate [your idea]. Research the market live, challenge competitors and economics, and recommend whether to validate, pivot, or run a bounded pilot. No implementation.
+```
 
-To trigger research reliably when a new project is proposed, copy `integration/AGENTS.snippet.md` into the repo’s `AGENTS.md` (Codex), and/or `integration/CLAUDE.snippet.md` into `CLAUDE.md` (Claude Code). This is deliberately **not** done by the installer: it changes repository-wide agent behavior and should be a conscious choice. These instructions defer to a user who explicitly says to skip the gate.
+You can pass a one-line idea or point the skill at a PRD or README. Choose a depth of `quick`, `standard` (default), or `deep`. If the skill does not appear, restart the assistant.
 
-## Inputs and outputs
-
-You can supply a one-line idea or a PRD/README in a repository. The skill infers assumptions and marks them as such; it does not assume the repo represents market validation. Choose `quick`, `standard` (default), or `deep`. At the end, expect:
+### Output
 
 ```
 research/greenfield/<slug>/
-├── DECISION.md             investment memo, red-team dissent, next bet
-├── MARKET_RESEARCH.md      8 pillars, competitors, sizing, business model
-├── EVIDENCE.md             each material claim and source provenance
-├── EXPERIMENTS.md          falsifiable tests with stop conditions
-├── evaluation.json         reproducible inputs and pillar scores
-└── decision.json           validated, deterministic scorecard output
+├── DECISION.md          Investment memo, red-team dissent, and next bet
+├── MARKET_RESEARCH.md   Pillar findings, competitors, sizing, business model
+├── EVIDENCE.md          Every material claim with its source
+├── EXPERIMENTS.md       Falsifiable tests with stop conditions
+├── evaluation.json      Reproducible inputs and pillar scores
+└── decision.json        Deterministic scorecard output
 ```
 
-The skill proposes outreach and paid experiments; it never autonomously spends money, contacts people or launches a product. For a no-web environment it should mark research incomplete, not fabricate answers.
+The skill proposes outreach and paid experiments but never spends money, contacts people, or launches anything on its own. Without web access it marks research as incomplete rather than inventing answers.
 
-## The eight roles
+## How it works
 
-1. Problem Discovery (`gf-problem` / `gf_problem`)
-2. Market & ICP (`gf-market` / `gf_market`)
-3. Customer Value (`gf-value` / `gf_value`)
-4. Unit Economics (`gf-economics` / `gf_economics`)
-5. Distribution & GTM (`gf-distribution` / `gf_distribution`)
-6. Competitive Intelligence (`gf-competition` / `gf_competition`)
-7. Execution & Founder Fit (`gf-execution` / `gf_execution`)
-8. Timing & Survivability (`gf-timing` / `gf_timing`)
+### Specialist roles
 
-An independent `gf-redteam` / `gf_redteam` critiques the specialist findings afterward. Default runtime plan: 4 concurrent subagent tasks at a time in two waves, then red team. The orchestrator writes final files to avoid contention. When delegation isn't available, all nine roles run sequentially, with transparent reporting.
+| Role | Agent |
+|---|---|
+| Problem Discovery | `gf-problem` |
+| Market & ICP | `gf-market` |
+| Customer Value | `gf-value` |
+| Unit Economics | `gf-economics` |
+| Distribution & GTM | `gf-distribution` |
+| Competitive Intelligence | `gf-competition` |
+| Execution & Founder Fit | `gf-execution` |
+| Timing & Survivability | `gf-timing` |
+| Red Team | `gf-redteam` |
 
-## Score (heuristic, not success probability)
+By default the specialists run in two waves of up to four concurrent tasks, followed by the red team. The orchestrator writes all final files to avoid contention.
 
-The weights are: problem 20, market 15, customer value 15, economics 15, distribution 15, competition 10, execution 5, timing 5. Each has separate 0–5 **quality** and 0–5 **evidence** scores. Distinguish an attractive market estimate from evidence a buyer will purchase *this product*.
+### Scoring
 
-Decision labels: `RESEARCH_INCOMPLETE`, `NO_GO`, `PIVOT`, `VALIDATE_BEFORE_BUILD`, and `PROCEED_TO_BOUNDED_PILOT`. A confirmed fatal blocker can veto a high score; proposing a safe experiment is not authorization to perform it. A pilot is not an endorsement to scale.
+Default pillar weights (adjusted per business model profile):
 
-Run the scorer on an evaluation result:
+| Problem | Market | Value | Economics | Distribution | Competition | Execution | Timing |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| 20 | 15 | 15 | 15 | 15 | 10 | 5 | 5 |
+
+Each pillar receives a 0–5 quality score and a 0–5 evidence score. The result is one of:
+
+| Decision | Meaning |
+|---|---|
+| `RESEARCH_INCOMPLETE` | Not enough evidence to decide |
+| `NO_GO` | Fatal blocker or weak fundamentals |
+| `PIVOT` | Promising signal, wrong shape |
+| `VALIDATE_BEFORE_BUILD` | Run the proposed experiments first |
+| `PROCEED_TO_BOUNDED_PILOT` | Build a limited, time-boxed pilot |
+
+A confirmed fatal blocker overrides any score. Scores are heuristics, not probabilities of success.
+
+## Command-line tools
+
+Paths below assume a Codex project install. For Claude Code, use `.claude/skills/...`.
 
 ```bash
-python3 .agents/skills/greenfield-business-evaluator/scripts/score_project.py \
-  research/greenfield/your-idea/evaluation.json \
-  --output research/greenfield/your-idea/decision.json
-# (Change .agents to .claude/skills for a Claude-only install.)
+SKILL=.agents/skills/greenfield-business-evaluator
+IDEA=research/greenfield/your-idea
+
+# Score an evaluation
+python3 $SKILL/scripts/score_project.py $IDEA/evaluation.json --output $IDEA/decision.json
+
+# Verify cited sources (network access is opt-in)
+python3 $SKILL/scripts/gf_evidence.py $IDEA/evaluation.json \
+  --output $IDEA/source-verification.json --allow-network
+
+# Plan, check, and resume a research run
+python3 $SKILL/scripts/gf_runs.py --project . plan
+python3 $SKILL/scripts/gf_runs.py --project . status
+python3 $SKILL/scripts/gf_runs.py --project . resume
+
+# Compare several ideas (start from skill/assets/portfolio-template.json)
+python3 $SKILL/scripts/gf_portfolio.py portfolio.json \
+  --output portfolio-ranking.json --markdown PORTFOLIO.md
 ```
 
-## Validate installation and score policy
+## Mission Control
+
+Mission Control is an optional local dashboard that displays specialist lifecycle events, tool usage, sources, and warnings in real time. It observes; it does not run agents, read their reasoning, or send data anywhere.
 
 ```bash
-python3 -m unittest discover -s tests -v
-python3 skill/scripts/score_project.py skill/assets/evaluation-template.json
-```
-
-The template test should report `RESEARCH_INCOMPLETE`, not fabricate research. All scripts use the standard library and do not make network requests; live research is performed by the host coding assistant with browsing enabled.
-
-## Design references
-
-- Skill format: https://agentskills.io/specification
-- Claude Code skills and subagents: https://code.claude.com/docs/en/skills ; https://code.claude.com/docs/en/sub-agents
-- Codex skills and subagents: https://learn.chatgpt.com/docs/build-skills ; https://learn.chatgpt.com/docs/agent-configuration/subagents
-- Problem/problem validation: https://www.ycombinator.com/library/7x-how-to-get-and-test-ideas
-- Evidence scale and assumption tests: https://www.strategyzer.com/library/business-project-succcess
-- Industry/customer data and competition: https://www.sba.gov/counseling/plan-your-business/
-
-For the full researcher protocol, source guidance, score gates, and deliverable specs, see `skill/references/`.
-
-## Validate this release
-
-```bash
-python3 -m unittest discover -s tests -v
-```
-
-Tests exercise both providers' install structures, existing real-event hook adapters (using fixtures), evidence URL/quotation behavior, hash-chain tamper detection, human receipt gates, portfolio scoring, model policies, resuming interrupted runs, and source coverage. **They are not a live end-to-end test of autonomous research quality or web reliability in your local environment.**
-
-## Upgrading from the original v1 / earlier Mission Control v2
-
-```bash
-python3 install.py --platform both --scope project --project /path/to/repo --force
-# This deliberately overwrites this skill's owned folders and gf-* role definitions only.
-# If you previously installed optional hooks, confirm they point to the same skill location.
+# Opt in to project-local lifecycle hooks
 python3 configure_hooks.py install --platform both --project /path/to/repo
+
+# Start a run and open the dashboard at http://127.0.0.1:8765
+python3 $SKILL/scripts/gf_observe.py start --project . --idea "Your idea"
+python3 $SKILL/scripts/gf_observe.py serve --project .
 ```
 
-Do not overwrite personal experiments or `.greenfield-observe` by reinstalling; they reside outside the managed skill directories. Copy your old evaluation files and migrate manually (add `schema_version: "2.0"`, business model and ledger/report references) rather than asserting earlier `verified: true` fields are trustworthy.
+Telemetry is stored in `.greenfield-observe/` in your repository; add it to `.gitignore` for private ideas. Codex project hooks must be reviewed and trusted via `/hooks`. Run `gf_observe.py demo` for a clearly labeled simulated session. See [OBSERVABILITY.md](OBSERVABILITY.md) for full setup and security notes.
+
+## Enforcing diligence before new builds
+
+To have your assistant run this evaluation whenever a new project is proposed, copy the relevant snippet into your repository:
+
+- Codex: [`integration/AGENTS.snippet.md`](integration/AGENTS.snippet.md) → `AGENTS.md`
+- Claude Code: [`integration/CLAUDE.snippet.md`](integration/CLAUDE.snippet.md) → `CLAUDE.md`
+
+The installer does not do this for you, since it changes repository-wide agent behavior. The gate always yields to a user who explicitly asks to skip it.
+
+## Development
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 skill/scripts/score_project.py skill/assets/evaluation-template.json   # expect RESEARCH_INCOMPLETE
+```
+
+The test suite covers installation layouts for both platforms, hook adapters, evidence checks, ledger tamper detection, scoring policies, portfolio ranking, and run resumption. Tests use synthetic fixtures and do not exercise live web research.
+
+## Limitations
+
+- Source checks are lexical, not semantic fact verification. PDFs and paywalled sources need human review.
+- The experiment ledger detects tampering with individual records, but an attacker with full file access can replace an entire chain.
+- Native subagent support varies by host version and can be disabled. The skill falls back to sequential execution and says so.
+- This tool structures and audits research. It does not replace talking to customers.
+
+## Documentation
+
+- [`skill/SKILL.md`](skill/SKILL.md): skill entry point
+- [`skill/references/`](skill/references/): research protocol, scoring, sources, agent briefs, and output specs
+- [`skill/references/v2-workflows.md`](skill/references/v2-workflows.md): end-to-end operational workflows
+- [`OBSERVABILITY.md`](OBSERVABILITY.md): Mission Control setup
+
+## License
+
+[MIT](LICENSE)
