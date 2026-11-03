@@ -466,8 +466,9 @@ def build_parser():
     p.add_argument("--output", type=Path, required=True, help="where to write the ranking JSON")
     p.add_argument("--markdown", type=Path, help="also write a Markdown table here")
 
-    import gf_doctor
+    import gf_doctor, gf_report
     gf_doctor.register(sub, _cmd)
+    gf_report.register(sub, _cmd)
     gf_profiles.register(sub, _cmd)
 
     p = _cmd(sub, "completion", "print a shell completion script", [

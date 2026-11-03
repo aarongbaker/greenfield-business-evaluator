@@ -250,7 +250,7 @@ def apply_uninstall(base, acts, platform, scope):
 
 
 def uninstall_main(argv):
-    parser = argparse.ArgumentParser(prog="install.py uninstall", description="Remove what install placed; edited files and research are kept.")
+    parser = argparse.ArgumentParser(prog="greenfield uninstall", description="Remove what install placed; edited files and research are kept.")
     parser.add_argument("--platform", choices=("claude", "codex", "both"), default="both")
     parser.add_argument("--scope", choices=("project", "user"), default="project")
     parser.add_argument("--project", default=".")

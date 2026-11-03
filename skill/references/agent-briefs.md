@@ -1,3 +1,5 @@
+> For agents running the skill. People: read [docs/evidence.md](../../docs/evidence.md) instead.
+
 # Specialist and red-team delegation contracts
 
 Every specialist receives: one-sentence product thesis, initial buyer/market and geography, business model if known, as-of date, relevant user-supplied facts, stage/depth, and explicitly assigned pillar. Tools: web search/browsing with source metadata. No product implementation, purchases, outreach or shared output edits.

@@ -111,7 +111,7 @@ def tighten(project):
 
 def git_ignore_hint(project):
     if (Path(project) / ".git").exists() and gitignore_missing(project, (".greenfield-observe/",)):
-        print("hint: .greenfield-observe/ is not in .gitignore; run install.py --gitignore to keep it out of commits", file=sys.stderr)
+        print("hint: .greenfield-observe/ is not in .gitignore; run `greenfield install --gitignore` to keep it out of commits", file=sys.stderr)
 
 
 def active_run(project):
@@ -448,13 +448,13 @@ def _decision_state(project, run_id, meta, state, **fields):
     if state == "no_research_dir":
         found = sorted(project.glob("research/greenfield/*/evaluation.json"))
         guess = found[0].parent.relative_to(project).as_posix() if len(found) == 1 else "research/greenfield/<slug>"  # suggest, never guess
-        step = {"text": "Link this run to its research folder", "command": f"gf_observe.py link --research-dir {guess} --run {run_id}"}
+        step = {"text": "Link this run to its research folder", "command": f"greenfield link --research-dir {guess} --run {run_id}"}
     elif state == "invalid_path":
-        step = {"text": "The linked folder is outside this project; link one inside it", "command": f"gf_observe.py link --research-dir research/greenfield/<slug> --run {run_id}"}
+        step = {"text": "The linked folder is outside this project; link one inside it", "command": f"greenfield link --research-dir research/greenfield/<slug> --run {run_id}"}
     elif state == "no_evaluation":
         step = {"text": "Specialists still running, or write evaluation.json from the template", "command": f"cp assets/evaluation-template.json {rd}/evaluation.json"}
     else:
-        step = {"text": "Fix the listed errors, then re-run the scorer with --json", "command": f"score_project.py {rd}/evaluation.json --json"}
+        step = {"text": "Fix the listed errors, then re-run the scorer with --json", "command": f"greenfield score {rd}/evaluation.json --json"}
     return {"state": state, "research_dir": rd, "demo": bool(meta.get("demo")), "next_step": step, "errors": [], **fields}
 
 
@@ -489,7 +489,7 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
     qs, es, d = result["quality_scores"], result["evidence_scores"], result["decision"]
     exp = next((x for x in data.get("experiments") or [] if isinstance(x, dict)), None) if isinstance(data.get("experiments"), list) else None
     bet = {"id": safe_text(exp.get("id"), 20), "text": safe_text(exp.get("hypothesis"), 200)} if exp and exp.get("hypothesis") else None
-    rescore = f"score_project.py {rd}/evaluation.json --json --output {rd}/decision.json"
+    rescore = f"greenfield score {rd}/evaluation.json --json --output {rd}/decision.json"
     unassessed = [p for p, q in qs.items() if q is None]
     if stale or not stored["matches"]:
         step = "Re-run the scorer to refresh decision.json"

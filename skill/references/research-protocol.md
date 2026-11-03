@@ -1,3 +1,5 @@
+> For agents running the skill. People: read [docs/evidence.md](../../docs/evidence.md) instead.
+
 # Market research protocol (read before internet research)
 
 ## Source discipline

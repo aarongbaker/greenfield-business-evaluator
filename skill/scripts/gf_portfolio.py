@@ -76,14 +76,14 @@ def stored_mismatch(decision_path, result):
     try:
         stored = load_json(decision_path)
     except GFError as exc:
-        return None, f'stored decision file is unreadable ({exc}); re-run score_project.py'
+        return None, f'stored decision file is unreadable ({exc}); re-run `greenfield score`'
     said = stored.get('decision')
     if result is None:
         return said, None  # invalid evaluation: reported as such, not as a mismatch
     if said != result['decision'] or not close(stored.get('weighted_quality_0_to_100'), result['weighted_quality_0_to_100'], .05) \
             or not close(stored.get('evidence_average_0_to_5'), result['evidence_average_0_to_5'], .005):
         return said, (f"stored {decision_path.name} says {said} (quality {stored.get('weighted_quality_0_to_100')}) but the evaluation "
-                      f"scores {result['decision']} (quality {result['weighted_quality_0_to_100']}) today; re-run score_project.py")
+                      f"scores {result['decision']} (quality {result['weighted_quality_0_to_100']}) today; re-run `greenfield score`")
     return said, None
 
 

@@ -187,7 +187,7 @@ class PortfolioTests(unittest.TestCase):
             out=gf_portfolio.evaluate_portfolio({'constraints':BUDGET,'opportunities':items},root)
             for r in out['opportunities']:
                 self.assertIsNone(r['rank'],r['name']);self.assertTrue(r['decision_mismatch'],r['name'])
-                self.assertIn('re-run score_project.py',r['unranked_reason'])
+                self.assertIn('re-run `greenfield score`',r['unranked_reason'])
             r=next(r for r in out['opportunities'] if r['name']=='Stale')
             self.assertEqual(r['stored_decision'],'VALIDATE_BEFORE_BUILD');self.assertEqual(r['decision'],'VALIDATE_BEFORE_BUILD')
             self.assertIn('Stale | Validate before build',gf_portfolio.to_markdown(out))

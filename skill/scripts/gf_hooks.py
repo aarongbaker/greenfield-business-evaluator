@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Opt-in local observability hooks; preserves unrelated hooks and supports removal.
 
-Run after install.py. Does not modify model permissions, API settings, or global config.
+Run after `greenfield install`. Does not modify model permissions, API settings, or global config.
 """
 import argparse
 import json

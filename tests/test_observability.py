@@ -364,7 +364,7 @@ class PrivacyTests(unittest.TestCase):
         (self.root / ".git").mkdir()
         with contextlib.redirect_stderr(io.StringIO()) as err:
             observe.main(["start", "--idea", "y", "--project", str(self.root)])
-        self.assertIn("install.py --gitignore", err.getvalue())
+        self.assertIn("greenfield install --gitignore", err.getvalue())
         self.assertFalse((self.root / ".gitignore").exists())
 
 
@@ -495,7 +495,7 @@ class DecisionTests(ServerMixin, unittest.TestCase):
             self.assertTrue(body["next_step"]["command"], body["state"])
         self.assertTrue(seen["invalid"]["errors"])
         self.assertEqual([p["key"] for p in seen["ok"]["pillars"]], list(observe.SPECIALISTS and [r.pillar for r in observe.SPECIALISTS]))
-        self.assertIn("gf_observe.py link --research-dir", seen["no_research_dir"]["next_step"]["command"])
+        self.assertIn("greenfield link --research-dir", seen["no_research_dir"]["next_step"]["command"])
 
     def test_no_research_dir_suggests_single_folder(self):
         self.ev.write_text(DEMO_EVAL.read_text())

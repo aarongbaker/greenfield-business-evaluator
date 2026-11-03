@@ -18,5 +18,6 @@ timing          5  ████░ 4         █░░░░ 1
   • No actual subagents recorded: use 'single-agent fallback', not 'parallel fa…
   • 8 pillars have no linked claims: competition, distribution, economics, exec…
 To reach Proceed: evidence 3: problem, market, value, economics, distribution
-Next: Record a paid-test result for problem with gf_ledger.py, then re-score.
+Next: Record a paid-test result for problem with `greenfield ledger record`,
+      then re-score.
 Heuristic triage, not a probability of commercial success.

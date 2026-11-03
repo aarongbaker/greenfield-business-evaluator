@@ -95,10 +95,10 @@ class FieldTests(unittest.TestCase):
         data["pillars"]["economics"]["evidence"] = 0
         self.assert_fields(scored(data), "VALIDATE_BEFORE_BUILD",
                            "Evidence is thin on economics and problem: test these before building",
-                           "Record a paid-test result for economics with gf_ledger.py, then re-score.")
+                           "Record a paid-test result for economics with `greenfield ledger record`, then re-score.")
         data["experiments"] = [{"id": "X1", "hypothesis": "Ten HR leads pay $50 for a benchmark"}]
         self.assertEqual(scored(data)["next_step"],
-                         "Run X1 (Ten HR leads pay $50 for a benchmark), record the result with gf_ledger.py, then re-score.")
+                         "Run X1 (Ten HR leads pay $50 for a benchmark), record the result with `greenfield ledger record`, then re-score.")
 
     def test_no_go(self):
         self.assert_fields(scorer.score_file(FIXTURES / "no-go.json")[0], "NO_GO",
@@ -165,7 +165,7 @@ def apply_gap(data, result):
             data["verification_report"] = "report.json"
             warnings = [w for w in warnings if not w.startswith(("Unreviewed public source", "Could not validate source"))]
         elif k == "reattest":
-            warnings = [w for w in warnings if "gf_ledger.py reattest" not in w]
+            warnings = [w for w in warnings if "ledger reattest" not in w]
     return data, [w for w in warnings if not w.startswith(("Unmet business-model", "Public citations", "No actual", "No live"))]
 
 

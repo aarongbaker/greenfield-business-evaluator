@@ -199,7 +199,7 @@ def main(argv=None):
     args=p.parse_args(argv)
     try:
         rid=args.run or active_run(args.project)
-        if not rid:raise ValueError('No run: initialize with gf_observe.py start first')
+        if not rid:raise ValueError('No run: initialize with `greenfield start` first')
         if args.command=='plan':out=plan(args.project,rid)
         elif args.command=='claim':out=claim(args.project,rid,args.role)
         elif args.command=='complete':out=complete(args.project,rid,args.role,args.artifact)

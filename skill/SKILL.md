@@ -85,7 +85,7 @@ For version 2, `behaviors` with evidence >=3 additionally need valid `ledger_eve
 
 Create outputs under `research/greenfield/<project-slug>/` (or user-specified path; don't overwrite files outside that directory without authorization):
 
-1. `DECISION.md` — decision first, 1-page investment memo, key evidence and recommendation. Always state if live research was unavailable, who actually did the analysis, as-of date, and `pilot != scale`.
+1. `DECISION.md` — decision first, 1-page investment memo. After `score`, run `python3 <skill dir>/scripts/greenfield.py report --json` to write the verdict and scorecard block; never hand-edit between its markers. You write only the narrative below it (see `references/outputs.md`). Always state if live research was unavailable, who actually did the analysis, and `pilot != scale`.
 2. `MARKET_RESEARCH.md` — eight pillar analyses; competitor matrix; bottom-up market sizing with low/base/high input ranges; rough economics and GTM; geographic and segment boundaries; contradictions; URLs inline with claims.
 3. `EVIDENCE.md` — source-ledger table of claims with classification, link, date, evidence level and independent-origin notes; unknowns and opposing evidence.
 4. `EXPERIMENTS.md` — 3–7 prioritized **test cards** with hypothesis, exact audience, method, measure, precommitted pass/fail threshold, low-cost budget/time assumptions, owner, ethics/consent and decision affected. Only recommend, don't run without consent.

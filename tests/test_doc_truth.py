@@ -1,6 +1,6 @@
-"""Doc-truth checks: the README and OBSERVABILITY.md must not repeat known-false statements.
+"""Doc-truth checks: the README and docs/ must not repeat known-false statements.
 
-Offline and cheap. The full "every README command runs as written" gate replaces this in W28.
+Offline and cheap. tests/test_docs.py runs every command in them (W28).
 """
 
 import ast
@@ -11,8 +11,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SKILL = ROOT / "skill"
 README = ROOT / "README.md"
-OBSERVABILITY = ROOT / "OBSERVABILITY.md"
-DOCS = [README, OBSERVABILITY]
+DOCS = [README, *sorted((ROOT / "docs").glob("*.md"))]
 
 # Phrases that were false (or are stale) and must not come back.
 STALE_PHRASES = ["do not make network requests", "extracted bundle", "succcess", "3.10"]
@@ -30,7 +29,7 @@ def section(text, heading):
 
 
 class DocTruthTests(unittest.TestCase):
-    def test_no_stale_phrases_in_readme_or_observability(self):
+    def test_no_stale_phrases_in_readme_or_docs(self):
         for doc in DOCS:
             text = doc.read_text(encoding="utf-8")
             for phrase in STALE_PHRASES:
@@ -41,9 +40,7 @@ class DocTruthTests(unittest.TestCase):
         for doc in FLOOR_MARKDOWN:
             with self.subTest(doc=doc.name):
                 self.assertNotIn("3.10", doc.read_text(encoding="utf-8"))
-        for doc in DOCS:
-            with self.subTest(doc=doc.name):
-                self.assertIn("Python 3.11+", doc.read_text(encoding="utf-8"))
+        self.assertIn("Python 3.11+", README.read_text(encoding="utf-8"))
         for script in FLOOR_SCRIPTS:
             with self.subTest(script=script.name):
                 docstring = ast.get_docstring(ast.parse(script.read_text(encoding="utf-8"))) or ""
