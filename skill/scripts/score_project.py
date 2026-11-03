@@ -8,12 +8,12 @@ or the predictive merit of the score. Source and experiment audits remain essent
 import argparse
 import datetime as dt
 import json
-import math
 import pathlib
 import re
 import sys
 from urllib.parse import urlparse
 from gf_profiles import BASE, PROFILES
+from gf_common import GFError, VERSION, finite_nonneg
 from gf_ledger import verified_behavior, reviewed_claims
 
 PILLAR_WEIGHTS = BASE
@@ -41,6 +41,14 @@ def has_http_url(v):
 
 def nonempty_str(v):
     return isinstance(v, str) and bool(v.strip())
+
+
+def nonneg_ok(v):
+    try:
+        finite_nonneg(v, "value")
+        return True
+    except GFError:
+        return False
 
 
 def validate(data, base_dir=None):
@@ -200,7 +208,7 @@ def validate(data, base_dir=None):
                 continue
             vals = [entry.get(k) for k in ("low", "base", "high")]
             if all(v is not None for v in vals):
-                if any(type(v) not in (int, float) or not math.isfinite(v) or v < 0 for v in vals):
+                if not all(nonneg_ok(v) for v in vals):
                     errors.append(f"market_model.{name} range must be nonnegative finite numbers")
                 elif not vals[0] <= vals[1] <= vals[2]:
                     errors.append(f"market_model.{name}: require low <= base <= high")
@@ -311,6 +319,7 @@ def score(data, warnings):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     parser.add_argument("evaluation", type=pathlib.Path, help="Input evaluation.json")
     parser.add_argument("--output", type=pathlib.Path, help="Write decision JSON here (default: stdout)")
     args = parser.parse_args()

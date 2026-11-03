@@ -13,6 +13,8 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+from gf_common import VERSION, finite_nonneg
+from gf_profiles import BASE
 from gf_observe import AGENTS,active_run,emit,storage,atomic_json,current_state
 
 ROLES=AGENTS
@@ -133,7 +135,7 @@ def resume(project,run_id,freshness_hours=72):
     return {'run_id':run_id,'tasks':result, 'caution':'Resume generates a safe plan, not background agent execution.'}
 
 def set_rate(project,run_id,rate):
-    rate=numeric_rate(rate)
+    rate=finite_nonneg(rate,'rate')
     def update(doc):
         if doc is None:raise ValueError('No plan')
         doc['cost_rate_usd_per_million_tokens']=rate
@@ -143,18 +145,12 @@ def set_rate(project,run_id,rate):
     return {'usd_per_million_reported_tokens':rate,'warning':'Approximate only; unavailable provider usage is not counted.'}
 
 
-def numeric_rate(value):
-    import math
-    if type(value) not in (int,float) or not math.isfinite(value) or value<0:raise ValueError('rate must be a finite nonnegative number')
-    return value
-
-
 def coverage(project,run_id,evaluation,report=None):
     data=json.loads(Path(evaluation).read_text(encoding='utf-8'))
     claims=data.get('claims',[])
     pillar_data={p:{'claims':sum(c.get('pillar')==p for c in claims),
                     'sourced_claims':sum(c.get('pillar')==p and bool(c.get('source_url')) for c in claims),
-                    'quality_assessed': isinstance(data.get('pillars',{}).get(p,{}).get('quality'),int)} for p in ('problem','market','value','economics','distribution','competition','execution','timing')}
+                    'quality_assessed': isinstance(data.get('pillars',{}).get(p,{}).get('quality'),int)} for p in BASE}
     audited=set()
     if report:
         verified=json.loads(Path(report).read_text(encoding='utf-8'))
@@ -184,6 +180,7 @@ def status(project,run_id,rate=None):
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--version',action='version',version=f'%(prog)s {VERSION}')
     p.add_argument('--project',default='.')
     p.add_argument('--run')
     sub=p.add_subparsers(dest='command',required=True)

@@ -9,9 +9,13 @@ from pathlib import Path
 import shlex
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "skill" / "scripts"))
+from gf_common import VERSION, atomic_write_json
+from gf_roles import hook_matcher
+
 NAME = "greenfield-business-evaluator"
 MARKER = "gf_observe.py"
-REGEX = "^gf[-_](problem|market|competition|economics|value|distribution|execution|timing|redteam)$"
+REGEX = hook_matcher()
 
 
 def path_for(project, platform):
@@ -70,14 +74,13 @@ def transform(path, command, mode):
     # Avoid writing back if unchanged; never overwrite without parsing existing JSON.
     if data != old:
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        tmp.replace(path)
+        atomic_write_json(path, data)
     return data != old
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     parser.add_argument("action", choices=("install", "remove"))
     parser.add_argument("--project", default=".")
     parser.add_argument("--platform", choices=("claude", "codex", "both"), default="both")

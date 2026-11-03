@@ -106,7 +106,7 @@ The skill proposes outreach and paid experiments but never spends money, contact
 | Competitive Intelligence | `gf-competition` |
 | Execution & Founder Fit | `gf-execution` |
 | Timing & Survivability | `gf-timing` |
-| Red Team | `gf-redteam` |
+| Independent Red Team | `gf-redteam` |
 
 By default the specialists run in two waves of up to four concurrent tasks, followed by the red team. The orchestrator writes all final files to avoid contention.
 

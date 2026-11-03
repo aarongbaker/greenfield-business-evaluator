@@ -1,0 +1,44 @@
+name: CI
+on:
+  push: {branches: [main]}
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with: {python-version: "${{ matrix.python }}"}
+      - run: python -W error -m unittest discover -s tests -v
+      - run: python -m compileall -q skill install.py configure_hooks.py make_agents.py
+      - name: Generated agent files are up to date
+        run: python make_agents.py && git diff --exit-code platform/
+      - name: Clean install smoke test
+        run: |
+          d=$(mktemp -d)
+          python install.py --platform both --project "$d"
+          test -z "$(find "$d" -name '*.pyc' -o -name __pycache__)"
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with: {python-version: "3.13"}
+      # Skipped until W7 adds tests/test_fuzz.py.
+      - if: hashFiles('tests/test_fuzz.py') != ''
+        run: GF_FUZZ_ITERATIONS=20000 python -m unittest tests.test_fuzz -v

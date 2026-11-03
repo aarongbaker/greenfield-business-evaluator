@@ -7,12 +7,17 @@ Personal scope: ~/.claude/skills, ~/.agents/skills; role folders in ~/.claude/ag
 """
 
 import argparse
+import fnmatch
 import pathlib
 import shutil
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent
 SKILL_NAME = "greenfield-business-evaluator"
+IGNORED = ("__pycache__", "*.pyc", "*.pyo", ".DS_Store", "*.tmp-*", ".pytest_cache")
+IGNORE = shutil.ignore_patterns(*IGNORED)
+sys.path.insert(0, str(ROOT / "skill" / "scripts"))
+from gf_common import VERSION
 
 
 def install_file(src: pathlib.Path, dst: pathlib.Path, force: bool):
@@ -31,12 +36,17 @@ def install_skill(dst: pathlib.Path, force: bool):
         # Replace only the owned skill folder; do not modify other skills.
         shutil.rmtree(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, dst)
+    shutil.copytree(source, dst, ignore=IGNORE)
+    leaked = [p for p in dst.rglob("*") if any(fnmatch.fnmatch(p.name, pat) for pat in IGNORED)]
+    if leaked:
+        raise RuntimeError(f"Ignored files were copied into {dst}: {leaked[:3]}")
+    (dst / ".greenfield-version").write_text(VERSION + "\n", encoding="utf-8")
     return dst
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     parser.add_argument("--platform", choices=("claude", "codex", "both"), default="both")
     parser.add_argument("--scope", choices=("project", "user"), default="project")
     parser.add_argument("--project", default=".", help="Project root (for --scope project)")

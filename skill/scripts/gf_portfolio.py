@@ -8,9 +8,9 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import math
 from pathlib import Path
 import sys
+from gf_common import VERSION, finite_nonneg
 
 SCENARIOS={
  'balanced':{'quality':.30,'evidence':.20,'founder':.20,'learning':.20,'resources':.10},
@@ -19,9 +19,7 @@ SCENARIOS={
 }
 
 def numeric(value, where, limit=None):
-    if type(value) not in (int,float) or not math.isfinite(value) or value<0 or (limit is not None and value>limit):
-        raise ValueError(f'{where} requires a finite nonnegative number'+(f' <= {limit}' if limit else ''))
-    return float(value)
+    return finite_nonneg(value, where, limit)
 
 
 def forecast(options):
@@ -38,6 +36,7 @@ def forecast(options):
 
 
 def evaluate_portfolio(manifest, root):
+    root=Path(root).resolve()
     items=manifest.get('opportunities',[])
     if not isinstance(items,list) or not items:raise ValueError('Need one or more opportunities')
     constraints=manifest.get('constraints',{})
@@ -105,7 +104,7 @@ def to_markdown(result):
 
 
 def main(argv=None):
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('manifest',type=Path);p.add_argument('--output',type=Path,required=True);p.add_argument('--markdown',type=Path)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--version',action='version',version=f'%(prog)s {VERSION}');p.add_argument('manifest',type=Path);p.add_argument('--output',type=Path,required=True);p.add_argument('--markdown',type=Path)
     args=p.parse_args(argv)
     try:
         root=args.manifest.resolve().parent
