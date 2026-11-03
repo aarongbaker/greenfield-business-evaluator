@@ -8,9 +8,11 @@ or the predictive merit of the score. Source and experiment audits remain essent
 import argparse
 import datetime as dt
 import json
+import os
 import pathlib
 import re
 import sys
+import textwrap
 from urllib.parse import urlparse
 from gf_profiles import BASE, PROFILES
 from gf_common import GFError, VERSION, atomic_write, finite_nonneg, load_json, report, resolve_inside
@@ -21,6 +23,17 @@ CORE = ("problem", "market", "value", "economics", "distribution")
 CLASSIFICATIONS = {"fact", "estimate", "inference", "assumption"}
 SEVERITIES = {"confirmed", "plausible", "resolved"}
 SUPPORTED_SCHEMA = "2.0"
+# The one verdict label table: scorer text, portfolio, dashboard and DECISION.md all read it.
+VERDICTS = {
+    "PROCEED_TO_BOUNDED_PILOT": {"label": "Proceed to bounded pilot", "tone": "good", "meaning": "Core gates met. Pilot only, not scale."},
+    "VALIDATE_BEFORE_BUILD": {"label": "Validate before build", "tone": "warn", "meaning": "Run the next experiment before writing code."},
+    "PIVOT": {"label": "Pivot", "tone": "warn", "meaning": "Evidence shows a severe core weakness."},
+    "NO_GO": {"label": "No go", "tone": "bad", "meaning": "A confirmed fatal blocker overrides the score."},
+    "RESEARCH_INCOMPLETE": {"label": "Research incomplete", "tone": "neutral", "meaning": "Not a launch decision yet."},
+    # Not a scorer decision: for callers showing an evaluation that failed validation.
+    "INVALID": {"label": "Can't score", "tone": "bad", "meaning": "evaluation.json has input errors."},
+}
+DEPRECATED_FIELDS = ["memo_label", "source_review_gate_open"]  # kept populated through 2.x, removed in 3.0
 
 
 def is_iso_date(v):
@@ -330,14 +343,16 @@ def score(data, warnings):
         warnings.append("No actual subagents recorded: use 'single-agent fallback', not 'parallel fan-out'")
     if not web:
         warnings.append("No live web research performed; prices, market sizes and competitor landscape unverified")
-    return {
+    result = {
         "schema_version": "2.0",
         "business_model_profile": profile_name,
         "missing_pilot_gates": missing_gates,
-        "source_review_gate_open": not source_risk,
+        "source_review_gate_open": not source_risk,  # deprecated: reads true when no review is pending
+        "source_review_pending": source_risk,
         "as_of": data["as_of"],
         "project": data["project"]["name"],
         "decision": decision,
+        "verdict_label": VERDICTS[decision]["label"],
         "memo_label": "VALIDATE_BEFORE_BUILD (research incomplete)" if decision == "RESEARCH_INCOMPLETE" else decision,
         "reason": reason,
         "weighted_quality_0_to_100": total,
@@ -351,8 +366,166 @@ def score(data, warnings):
         "web_research_performed": web,
         "subagents_actual": data["execution"]["subagents_actual"],
         "warnings": sorted(set(warnings)),
+        "deprecated_fields": DEPRECATED_FIELDS,
         "disclaimer": "Heuristic triage, not a probability of commercial success or legal approval."
     }
+    result["headline"] = headline(result, data)
+    result["next_step"] = next_step(result, data)
+    return result
+
+
+def clip(text, limit, ellipsis="…"):
+    """One printable line of at most limit characters (code points, so no surrogate is split)."""
+    text = re.sub(r"[\x00-\x08\x0e-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]", "", re.sub(r"[\t\n\x0b\x0c\r]+", " ", str(text))).rstrip()
+    return text if len(text) <= limit else text[:limit - len(ellipsis)].rstrip() + ellipsis
+
+
+def names(items):
+    items = list(items)
+    return " and ".join(items) if len(items) < 3 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def headline(result, data):
+    """At most 90 characters saying why this verdict, built from the result by rule, never model-written."""
+    d, qs, ev = result["decision"], result["quality_scores"], result["evidence_scores"]
+    if d == "NO_GO":
+        b = next(b for b in data["hard_blockers"] if b["status"] == "confirmed" and b["fatal"])
+        text = f"Fatal blocker confirmed: {b.get('id', 'unspecified')} {b['finding']}"
+    elif d == "RESEARCH_INCOMPLETE":
+        missing = sum(q is None for q in qs.values())
+        parts = ([f"{missing} of {len(qs)} pillars unassessed"] if missing else []) + \
+                ([] if result["web_research_performed"] else ["no live web research"])
+        text = "Research incomplete: " + ", ".join(parts)
+    elif d == "PIVOT":
+        weak = [p for p in CORE if qs[p] <= 1 and ev[p] >= 3]
+        text = f"Behavior-backed evidence shows a severe weakness in {names(weak)}: rethink before building"
+    elif d == "PROCEED_TO_BOUNDED_PILOT":
+        text = "All five core pillars clear the evidence gates: run a bounded pilot"
+    elif result["unresolved_plausible_fatal_blockers"]:
+        text = "Plausible fatal blocker unresolved: " + ", ".join(result["unresolved_plausible_fatal_blockers"])
+    elif result["missing_core_behavior_evidence"]:
+        thin = sorted(result["missing_core_behavior_evidence"], key=lambda p: ev[p])[:2]
+        text = f"Evidence is thin on {names(thin)}: test {'these' if len(thin) > 1 else 'it'} before building"
+    elif any(qs[p] < 3 for p in CORE):
+        text = f"Quality is weak on {names(p for p in CORE if qs[p] < 3)}: fix the offer before a pilot"
+    elif result["missing_pilot_gates"]:
+        text = "Pilot gates unmet: " + ", ".join(result["missing_pilot_gates"])
+    elif result["source_review_pending"]:
+        text = "Public citations need a human source review before a pilot"
+    elif any("gf_ledger.py reattest" in w for w in result["warnings"]):
+        text = "Ledger receipts are not confirmed on this machine: re-attest before a pilot"
+    else:
+        text = f"Weighted quality {result['weighted_quality_0_to_100']}/100 is below the 75 pilot bar"
+    return clip(text, 90)
+
+
+def next_step(result, data):
+    """One imperative sentence: the single next thing to do for this verdict."""
+    d, qs = result["decision"], result["quality_scores"]
+    first = next(iter(data.get("experiments") or []), None)
+    if d == "NO_GO":
+        return f"Do not build; revisit only if new sourced evidence resolves blocker {result['confirmed_fatal_blockers'][0]}."
+    if d == "RESEARCH_INCOMPLETE":
+        todo = (["fill pillar quality scores"] if None in qs.values() else []) + \
+               ([] if result["web_research_performed"] else ["run live web research"])
+        return (" and ".join(todo) + ", then re-score.").capitalize()
+    if d == "PIVOT":
+        return "Reframe the idea around the weak core pillar and evaluate it as a new evaluation.json."
+    if d == "PROCEED_TO_BOUNDED_PILOT":
+        return "Run a bounded pilot against its pre-committed thresholds; do not scale yet."
+    if isinstance(first, dict) and nonempty_str(first.get("hypothesis")):
+        return clip(f"Run {first.get('id') or 'the first experiment'} ({first['hypothesis']}), "
+                    "record the result with gf_ledger.py, then re-score.", 200)
+    if result["unresolved_plausible_fatal_blockers"]:
+        return f"Confirm or resolve blocker {result['unresolved_plausible_fatal_blockers'][0]} with sourced evidence, then re-score."
+    if result["missing_core_behavior_evidence"]:
+        p = min(result["missing_core_behavior_evidence"], key=lambda p: result["evidence_scores"][p])
+        return f"Record a paid-test result for {p} with gf_ledger.py, then re-score."
+    if result["missing_pilot_gates"]:
+        return f"Link reviewed evidence to pilot gate {result['missing_pilot_gates'][0]}, then re-score."
+    if result["source_review_pending"]:
+        return "Run gf_evidence.py on the cited sources and record a human source review, then re-score."
+    return "Run the experiment that tests the weakest core pillar, then re-score."
+
+
+# (pattern with one name group, summary when it matches more than once)
+COLLAPSE = (
+    (r"pillars\.(\w+): no claims linked$", "{n} pillars have no linked claims: {names}"),
+    (r"pillars\.(\w+): strong claimed behavior", "{n} pillars claim strong behavior without customer validation: {names}"),
+    (r"(claims\[\d+\]): source has no access date$", "{n} sources have no access date: {names}"),
+    (r"(claims\[\d+\]): estimate has no documented formula", "{n} estimates have no formula in notes: {names}"),
+    (r"(claims\[\d+\]): assumption has a URL", "{n} assumptions cite a URL: {names}"),
+    (r"Unreviewed public source claim: (.+)$", "{n} public source claims need human review: {names}"),
+    (r"Receipt (\S+) not confirmed on this machine", "{n} ledger receipts not confirmed on this machine: {names}"),
+)
+RANK = (("blocker", 0), ("pilot gate", 1), ("source", 2), ("citation", 2), ("receipt", 2),
+        ("research", 3), ("linked claims", 3), ("subagents", 3), ("customer validation", 3))
+
+
+def summarize_warnings(warnings):
+    """Collapse repeated warnings by pattern and order them: blockers, pilot gates, sources, research gaps, the rest."""
+    groups, out = {}, []
+    for w in dict.fromkeys(warnings):
+        for pattern, summary in COLLAPSE:
+            m = re.match(pattern, w)
+            if m:
+                if summary not in groups:
+                    groups[summary] = []
+                    out.append(summary)
+                groups[summary].append((m.group(1), w))
+                break
+        else:
+            out.append(w)
+    lines = [(groups[x][0][1] if len(groups[x]) == 1 else x.format(n=len(groups[x]), names=", ".join(n for n, _ in groups[x])))
+             if x in groups else x for x in out]
+    return sorted(lines, key=lambda w: next((r for k, r in RANK if k in w.lower()), 4))
+
+
+GLYPHS = {"unicode": {"dot": "●", "full": "█", "empty": "░", "sep": "·", "item": "•", "dash": "—", "more": "…"},
+          "ascii": {"dot": "*", "full": "#", "empty": ".", "sep": "-", "item": "-", "dash": "-", "more": "..."}}
+TONES = {"good": "32", "warn": "33", "bad": "31", "neutral": "2"}
+
+
+def bar(value, glyphs="unicode", total=5):
+    g = GLYPHS[glyphs]
+    return g["full"] * value + g["empty"] * (total - value)
+
+
+def render_text(result, *, color, width=80, glyphs="unicode", all_warnings=False):
+    """The one-screen summary a person sees on a terminal. Pure: same result, same text."""
+    g = GLYPHS[glyphs]
+    line = lambda text: clip(text, width, g["more"])
+    verdict = VERDICTS.get(result["decision"], {"label": result["decision"], "tone": "neutral"})
+    badge = f"{g['dot']} {verdict['label'].upper()}"
+    title = clip(f"{result['project']} {g['sep']} as of {result['as_of']}", max(10, width - len(badge) - 3), g["more"])
+    if color:
+        badge = f"\033[1;{TONES[verdict['tone']]}m{badge}\033[0m"
+    total = result["weighted_quality_0_to_100"]
+    out = [badge + "   " + title,
+           line(result["headline"]), "",
+           line(f"Weighted quality {f'{total:g}/100' if total is not None else g['dash'] + ' / 100 (incomplete)'}   "
+                f"Evidence avg {result['evidence_average_0_to_5']:.1f}/5   "
+                f"Fatal blockers {len(result['confirmed_fatal_blockers'])}"), "",
+           line(f"{'Pillar':<14} {'Wt':>2}  {'Quality':<14}  {'Evidence':<12}Profile {result['business_model_profile']}")]
+    for p, w in result["pillar_weights"].items():
+        q, e = result["quality_scores"][p], result["evidence_scores"][p]
+        out.append(f"{p:<14} {w:>2}  {(bar(q, glyphs) + f' {q}') if q is not None else g['dash'] + ' not assessed':<14}  {bar(e, glyphs)} {e}")
+    raw = result["warnings"]
+    items = list(raw) if all_warnings else summarize_warnings(raw)
+    blockers = result["unresolved_plausible_fatal_blockers"]
+    if blockers and not all_warnings:
+        items.insert(0, "Plausible fatal blocker unresolved: " + ", ".join(blockers))
+    if items:
+        shown = items if all_warnings else items[:5]
+        note = "" if len(shown) == len(items) else f" (top 5 shown; --all-warnings for every one)"
+        out += ["", f"! {len(raw)} warning{'s' * (len(raw) != 1)}{note}"]
+        out += [line(f"  {g['item']} {w}") for w in shown]
+        if len(items) > len(shown):
+            out.append(f"  +{len(items) - len(shown)} more")
+    out += textwrap.wrap(clip("Next: " + result["next_step"], 400, g["more"]), width, subsequent_indent="      ")
+    out.append("Heuristic triage, not a probability of commercial success.")
+    text = "\n".join(out) + "\n"
+    return text.encode("ascii", "replace").decode() if glyphs == "ascii" else text
 
 
 def score_file(path):
@@ -377,25 +550,40 @@ def run(args):
         print(f"  next: fix the field(s) above and re-run `score_project.py {args.evaluation}`", file=sys.stderr)
         return 2
     body = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
+    text = sys.stdout.isatty() and not args.json
     if args.output:
         try:
-            args.output.parent.mkdir(parents=True, exist_ok=True)
-            atomic_write(args.output, body)
+            args.output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            atomic_write(args.output, body, mode=0o600)
         except OSError as exc:
             return report(GFError(f"cannot write decision: {exc.strerror or exc}", path=args.output, hint="choose a writable --output path"))
-    else:
+    if text:
+        color = not args.no_color and not os.environ.get("NO_COLOR") and os.environ.get("TERM") != "dumb"
+        try:
+            "●█░·•—…".encode(sys.stdout.encoding or "ascii")
+            glyphs = "unicode"
+        except (UnicodeEncodeError, LookupError):
+            glyphs = "ascii"
+        print(render_text(result, color=color, glyphs=glyphs, all_warnings=args.all_warnings), end="")
+        if args.output:
+            print(f"Saved decision.json to {args.output}")
+        return 0
+    if not args.output:
         print(body, end="")
     for warning in result["warnings"]:
         print("WARNING: " + warning, file=sys.stderr)
     return 0
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     parser.add_argument("evaluation", type=pathlib.Path, help="Input evaluation.json")
     parser.add_argument("--output", type=pathlib.Path, help="Write decision JSON here (default: stdout)")
-    args = parser.parse_args()
+    parser.add_argument("--json", action="store_true", help="Print decision JSON even on a terminal (agents: always pass this)")
+    parser.add_argument("--all-warnings", action="store_true", help="Text mode: list every warning instead of the top 5 groups")
+    parser.add_argument("--no-color", action="store_true", help="Text mode: no colour (also off with NO_COLOR or TERM=dumb)")
+    args = parser.parse_args(argv)
     try:
         return run(args)
     except Exception as exc:  # never a traceback, never a verdict after an unexpected error

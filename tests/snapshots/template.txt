@@ -1,0 +1,22 @@
+● RESEARCH INCOMPLETE   REPLACE_PROJECT_NAME · as of 2026-10-23
+Research incomplete: 8 of 8 pillars unassessed, no live web research
+
+Weighted quality — / 100 (incomplete)   Evidence avg 0.0/5   Fatal blockers 0
+
+Pillar         Wt  Quality         Evidence    Profile general
+problem        20  — not assessed  ░░░░░ 0
+market         15  — not assessed  ░░░░░ 0
+value          15  — not assessed  ░░░░░ 0
+economics      15  — not assessed  ░░░░░ 0
+distribution   15  — not assessed  ░░░░░ 0
+competition    10  — not assessed  ░░░░░ 0
+execution       5  — not assessed  ░░░░░ 0
+timing          5  — not assessed  ░░░░░ 0
+
+! 11 warnings
+  • Could not validate source review ledger/report: GFError
+  • No actual subagents recorded: use 'single-agent fallback', not 'parallel fa…
+  • No live web research performed; prices, market sizes and competitor landsca…
+  • 8 pillars have no linked claims: competition, distribution, economics, exec…
+Next: Fill pillar quality scores and run live web research, then re-score.
+Heuristic triage, not a probability of commercial success.

@@ -9,15 +9,44 @@ import argparse
 import csv
 import json
 from pathlib import Path
+import re
 import sys
-from gf_common import GFError, VERSION, finite_nonneg, load_json, resolve_inside
-from score_project import score_file
+from gf_common import GFError, atomic_write, atomic_write_json, VERSION, finite_nonneg, load_json, resolve_inside
+from score_project import VERDICTS, score_file
 
 SCENARIOS={
  'balanced':{'quality':.30,'evidence':.20,'founder':.20,'learning':.20,'resources':.10},
  'capital_constrained':{'quality':.22,'evidence':.22,'founder':.18,'learning':.13,'resources':.25},
  'learning_first':{'quality':.22,'evidence':.14,'founder':.14,'learning':.40,'resources':.10},
 }
+
+TEMPLATE_PATHS={'relative/path/evaluation.json','relative/path/decision.json'}
+NEEDS_NUMBER=('founder_fit_0_to_5','build.cash_usd','build.engineering_weeks','experiment.cash_usd','experiment.weeks','experiment.expected_learning_0_to_5')
+
+
+def md_cell(value, limit=120):
+    """One safe Markdown table cell: no line breaks, no live links or HTML, at most limit characters before escaping."""
+    if value is None:return '—'
+    text=re.sub(r'[\x00-\x1f\x7f-\x9f]','',re.sub(r'[\r\n\t]',' ',str(value)))
+    if len(text)>limit:text=text[:limit-1].rstrip()+'…'
+    return re.sub(r'([\\|*_`\[\]<>#~])',r'\\\1',text)
+
+
+def find_placeholders(manifest):
+    """JSON paths still holding template values: REPLACE_ strings, template paths, or null where a number is required."""
+    found=[]
+    def walk(node,path):
+        if isinstance(node,dict):
+            for k,v in node.items():
+                if not str(k).startswith('_'):walk(v,f'{path}.{k}' if path else str(k))
+        elif isinstance(node,list):
+            for i,v in enumerate(node):walk(v,f'{path}[{i}]')
+        elif (isinstance(node,str) and (node.startswith('REPLACE_') or node in TEMPLATE_PATHS)) or \
+                (node is None and re.sub(r'^opportunities\[\d+\]\.','',path) in NEEDS_NUMBER):
+            found.append(path)
+    walk(manifest,'')
+    return found
+
 
 def numeric(value, where, limit=None):
     return finite_nonneg(value, where, limit)
@@ -60,6 +89,8 @@ def stored_mismatch(decision_path, result):
 
 def evaluate_portfolio(manifest, root):
     root=Path(root).resolve()
+    todo=find_placeholders(manifest)
+    if todo:raise GFError(f"portfolio manifest still has {len(todo)} placeholder{'s'*(len(todo)!=1)} to fill: {', '.join(todo)}. See the _help notes in the template.")
     items=manifest.get('opportunities',[])
     if not isinstance(items,list) or not items:raise ValueError('Need one or more opportunities')
     constraints=manifest.get('constraints',{})
@@ -96,7 +127,8 @@ def evaluate_portfolio(manifest, root):
         veto=result.get('decision') not in ('VALIDATE_BEFORE_BUILD','PROCEED_TO_BOUNDED_PILOT')
         reason=(f"evaluation invalid: {len(errors)} error{'s'*(len(errors)!=1)} (first: {errors[0]})" if errors else mismatch
                 or ('Decision requires pivot/rejection or research is incomplete' if veto else 'Missing quality/evidence' if not valid else None))
-        results.append({'name':name,'decision':result.get('decision'),'stored_decision':stored,'decision_mismatch':bool(mismatch),
+        code=result.get('decision') or 'INVALID'
+        results.append({'name':name,'decision':result.get('decision'),'verdict_label':VERDICTS.get(code,{}).get('label','Unknown verdict'),'stored_decision':stored,'decision_mismatch':bool(mismatch),
                         'validation_errors':errors[:5],'business_model':result.get('business_model_profile'),
                         'founder_fit_0_to_5':fit,'founder_fit_rationale':item['founder_fit_rationale'],
                         'quality_0_to_100':q,'evidence_0_to_5':e,'sensitivity_scores':sensitivity,
@@ -120,11 +152,14 @@ def evaluate_portfolio(manifest, root):
 
 
 def to_markdown(result):
-    lines=['# Greenfield opportunity portfolio','',result['assumptions'],'', '| Rank | Opportunity | Decision | Balanced | Sensitivity range | Next validation | Unranked because |', '|---:|---|---|---:|---|---|---|']
+    lines=['# Greenfield opportunity portfolio','',result['assumptions'],'', '| Rank | Opportunity | Decision | Balanced | Sensitivity range | Next validation | Why unranked |', '|---:|---|---|---:|---|---|---|']
     for r in result['opportunities']:
         sc=r['sensitivity_scores']['balanced'];rr=r['score_range']
-        lines.append(f"| {r['rank'] or '—'} | {r['name']} | {r['decision'] or 'INVALID'} | {str(sc) if sc is not None else 'N/A'} | {str(rr) if rr else 'N/A'} | {r['next_test'].replace('|','/')} | {(r['unranked_reason'] or '').replace('|','/')} |")
-    lines.extend(['','**Recommendation:** '+result['recommendation'],'','Scores are comparative design heuristics, not calibrated predictive estimates. Prioritization excludes NO_GO, PIVOT and RESEARCH_INCOMPLETE.'])
+        label=VERDICTS.get(r['decision'] or 'INVALID',{}).get('label','Unknown verdict')
+        why='Stored decision disagrees with re-score' if r.get('decision_mismatch') else r['unranked_reason'] or ''
+        cells=[r['rank'] or '—',r['name'],label,sc if sc is not None else 'N/A',rr or 'N/A',r['next_test'],why]
+        lines.append('| '+' | '.join(md_cell(c) for c in cells)+' |')
+    lines.extend(['','**Recommendation:** '+md_cell(result['recommendation'],1000),'','Scores are comparative design heuristics, not calibrated predictive estimates. Prioritization excludes No go, Pivot and Research incomplete.'])
     return '\n'.join(lines)+'\n'
 
 
@@ -134,8 +169,8 @@ def main(argv=None):
     try:
         root=args.manifest.resolve().parent
         out=evaluate_portfolio(json.loads(args.manifest.read_text(encoding='utf-8')),root)
-        args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(out,indent=2)+'\n')
-        if args.markdown:args.markdown.parent.mkdir(parents=True,exist_ok=True);args.markdown.write_text(to_markdown(out))
+        args.output.parent.mkdir(mode=0o700,parents=True,exist_ok=True);atomic_write_json(args.output,out,mode=0o600)
+        if args.markdown:args.markdown.parent.mkdir(mode=0o700,parents=True,exist_ok=True);atomic_write(args.markdown,to_markdown(out),mode=0o600)
         print(json.dumps({'ranked':sum(r['rank'] is not None for r in out['opportunities']),'opportunities':len(out['opportunities']),'recommendation':out['recommendation']},indent=2))
     except (OSError,ValueError,TypeError,KeyError) as exc:
         print('ERROR:',exc,file=sys.stderr);return 2

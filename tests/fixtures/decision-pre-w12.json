@@ -1,0 +1,67 @@
+{
+  "schema_version": "2.0",
+  "business_model_profile": "general",
+  "missing_pilot_gates": [],
+  "source_review_gate_open": true,
+  "as_of": "2026-10-23",
+  "project": "Validate fixture",
+  "decision": "VALIDATE_BEFORE_BUILD",
+  "memo_label": "VALIDATE_BEFORE_BUILD",
+  "reason": "Proceed only with experiments targeted at the weakest decision-critical assumptions.",
+  "weighted_quality_0_to_100": 80.0,
+  "evidence_average_0_to_5": 1.0,
+  "pillar_weights": {
+    "problem": 20,
+    "market": 15,
+    "value": 15,
+    "economics": 15,
+    "distribution": 15,
+    "competition": 10,
+    "execution": 5,
+    "timing": 5
+  },
+  "quality_scores": {
+    "problem": 4,
+    "market": 4,
+    "value": 4,
+    "economics": 4,
+    "distribution": 4,
+    "competition": 4,
+    "execution": 4,
+    "timing": 4
+  },
+  "evidence_scores": {
+    "problem": 1,
+    "market": 1,
+    "value": 1,
+    "economics": 1,
+    "distribution": 1,
+    "competition": 1,
+    "execution": 1,
+    "timing": 1
+  },
+  "missing_core_behavior_evidence": [
+    "problem",
+    "market",
+    "value",
+    "economics",
+    "distribution"
+  ],
+  "confirmed_fatal_blockers": [],
+  "unresolved_plausible_fatal_blockers": [],
+  "web_research_performed": true,
+  "subagents_actual": 0,
+  "warnings": [
+    "Could not validate source review ledger/report: GFError",
+    "No actual subagents recorded: use 'single-agent fallback', not 'parallel fan-out'",
+    "pillars.competition: no claims linked",
+    "pillars.distribution: no claims linked",
+    "pillars.economics: no claims linked",
+    "pillars.execution: no claims linked",
+    "pillars.market: no claims linked",
+    "pillars.problem: no claims linked",
+    "pillars.timing: no claims linked",
+    "pillars.value: no claims linked"
+  ],
+  "disclaimer": "Heuristic triage, not a probability of commercial success or legal approval."
+}

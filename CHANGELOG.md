@@ -13,6 +13,12 @@ Versioning rules:
 
 ## [Unreleased]
 
+### Changed (observe/install)
+
+- `gf_observe.py start` refuses to replace a running run (exit 2) unless `--new`; `demo` no longer displaces a real run.
+- `.greenfield-observe/` is 0700/0600 (older trees are tightened on `start`/`serve`); `install.py` offers `.gitignore` lines (`--gitignore`, `--no-gitignore`).
+- The event log no longer stops at 10,000 lines, so status and counts follow the newest events.
+
 ### Security
 
 - Behavior receipts and source reviews need a person at a terminal (`/dev/tty`) typing a one-time code, and are HMAC-signed with a local key at `$XDG_CONFIG_HOME/greenfield/attest.key` (override with `GF_CONFIG_DIR` or `GF_ATTEST_KEY_FILE`). Unsigned or hand-written receipts no longer verify.
@@ -21,6 +27,8 @@ Versioning rules:
 ### Changed
 
 - Ledger receipts store the artifact path relative to the ledger's folder, so a moved or copied evaluation folder still verifies. Legacy absolute paths still verify (inside the folder) with a warning for one release.
+- `score_project.py` prints a one-screen text summary (verdict, headline, pillar bars, grouped warnings, next step) when stdout is a terminal. Piped output, or `--json`, stays JSON with `WARNING:` lines on stderr. New flags: `--json`, `--all-warnings`, `--no-color` (also `NO_COLOR`, `TERM=dumb`).
+- Portfolio Markdown escapes every cell (no broken tables, links or HTML from crafted names), shows readable verdict labels and a "Why unranked" column. Running the shipped `portfolio-template.json` lists its unfilled placeholders and exits 2.
 
 ### Migration
 
@@ -36,6 +44,11 @@ Versioning rules:
 - `--version` flag on every script and on `install.py`.
 - `.greenfield-version` file written into each installed skill folder.
 - GitHub Actions CI: tests on Python 3.11 to 3.14 on Linux and macOS, plus a clean-install check.
+- `decision.json` fields `verdict_label`, `headline`, `next_step`, `source_review_pending` and `deprecated_fields`; portfolio JSON gains `verdict_label`.
+
+### Deprecated
+
+- `decision.json` `memo_label` and `source_review_gate_open` (which reads true when no source review is pending; use `source_review_pending`). Both stay populated through 2.x and are removed in 3.0.
 
 ## [2.0.0] - 2026-10-23
 

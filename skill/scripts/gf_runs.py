@@ -37,6 +37,7 @@ def transact(project,run_id,callback):
     p=manifest_path(project,run_id)
     p.parent.mkdir(parents=True,exist_ok=True)
     lock=p.with_suffix('.lock')
+    lock.touch(mode=0o600)
     with lock.open('a+') as lf:
         fcntl.flock(lf,fcntl.LOCK_EX)
         try:

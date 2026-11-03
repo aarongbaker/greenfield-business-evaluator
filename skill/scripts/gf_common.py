@@ -142,3 +142,16 @@ def finite_nonneg(value, where, limit=None):
     if not math.isfinite(f) or f < 0 or (limit is not None and f > limit):
         raise GFError(f"{where} requires a finite nonnegative number" + (f" <= {limit}" if limit else ""))
     return f
+
+
+PRIVATE_IGNORES = (".greenfield-observe/", "research/greenfield/")
+
+
+def gitignore_missing(project, patterns=PRIVATE_IGNORES):
+    """Return the patterns not yet in <project>/.gitignore (leading/trailing slash ignored)."""
+    try:
+        lines = (Path(project) / ".gitignore").read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        lines = []
+    have = {ln.strip().strip("/") for ln in lines}
+    return [p for p in patterns if p.strip("/") not in have]
