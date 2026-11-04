@@ -64,7 +64,7 @@ class SnapshotTests(unittest.TestCase):
 
     def test_template_snapshot(self):
         text = self.check(TEMPLATE_PATH, "template.txt")
-        self.assertLessEqual(len(text.splitlines()), 25)
+        self.assertLessEqual(len(text.splitlines()), 27)
         self.assertTrue(text.startswith("● RESEARCH INCOMPLETE"))
 
     def test_validate_fixture_snapshot(self):
@@ -152,6 +152,9 @@ def apply_gap(data, result):
             data["pillars"][item["pillar"]][item["field"]] = item["needed"]
         elif k == "web":
             data["execution"]["web_used"] = True
+        elif k == "started":
+            data["as_of"] = "2026-11-03"
+            data["project"] = {a: ("X" if str(b).startswith("REPLACE_") else b) for a, b in data["project"].items()}
         elif k.startswith("blocker:"):
             for b in data["hard_blockers"]:
                 if b.get("id") == k[8:]:

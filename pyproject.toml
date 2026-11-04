@@ -1,0 +1,40 @@
+# Build-time only: the runtime is the Python standard library. install.py stays the no-dependency path.
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "greenfield-evaluator"
+dynamic = ["version"]
+description = "Evaluate a business idea before building it: agent research runs, an evidence ledger and a deterministic scorer."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Environment :: Console",
+]
+
+[project.urls]
+Homepage = "https://github.com/aarongbaker/greenfield-business-evaluator"
+
+[project.scripts]
+greenfield = "greenfield_evaluator.scripts.cli:main"
+
+[tool.setuptools]
+# skill/ is the package, so the installed skill and the pip package are one copy of the code.
+packages = ["greenfield_evaluator", "greenfield_evaluator.scripts", "greenfield_evaluator.platform"]
+
+[tool.setuptools.package-dir]
+greenfield_evaluator = "skill"
+"greenfield_evaluator.platform" = "platform"
+
+[tool.setuptools.package-data]
+greenfield_evaluator = ["SKILL.md", "assets/*", "assets/demo-research/*", "references/*.md"]
+"greenfield_evaluator.platform" = ["claude/agents/*.md", "codex/agents/*.toml"]
+
+[tool.setuptools.dynamic]
+version = {attr = "greenfield_evaluator.scripts._version.__version__"}

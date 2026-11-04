@@ -11,7 +11,27 @@ Versioning rules:
 
 `schema_version` ("2.0") is separate from the tool version and changes only on a major.
 
-## [Unreleased]
+## [2.1.0] - Unreleased
+
+### Added (CLI)
+
+- One `greenfield` command (`pipx install .`, `uvx --from . greenfield`, or `python3 <skill>/scripts/greenfield.py`): `install`, `hooks`, `start`, `status`, `task`, `dashboard`, `demo`, `event emit`, `sources check`, `ledger`, `score`, `portfolio`, `completion`. Global `--project`, `--json`, `--quiet`, `--no-color`, `--version` work before or after the command; JSON when piped; errors as `{"error": {...}}` on stderr with `--json`; exit codes 0/1/2/3/130.
+- `pyproject.toml` (standard library only at runtime); the version lives in `skill/scripts/_version.py`.
+
+- `greenfield doctor` runs grouped checks (environment, install, hooks, privacy, attestation, run) and prints one fix command per problem; `--json`, `--fix` (permissions and `.gitignore` only), `--network` (the only mode that opens sockets); exit 0/1, or 3 on an unsupported platform. `greenfield profiles [show NAME | compare A B]` explains the six business-model profiles, their weights and pilot gates.
+
+### Added (agents and guard)
+
+- `greenfield hooks install` also installs a PreToolUse self-attestation guard (`greenfield hook guard`; `--guard-only` installs just it). It refuses agent Bash calls that run a ledger `record --attester` in any spelling (old `gf_ledger.py`, `greenfield ledger record`, `bash -c`, `&&`, env prefixes) and Write/Edit/MultiEdit/NotebookEdit or shell access to ledger files and `~/.config/greenfield/`, and tells the human the command to run themselves. Defense in depth: the TTY prompt and HMAC key remain the real lock. `hooks remove` and `uninstall` take it out without touching other hooks.
+- `tools/make_agents.py --check` (CI) fails when the 18 generated agent files drift; a unit test also asserts the read-only tool limits.
+
+### Changed (agents and docs)
+
+- `make_agents.py` moved to `tools/`. Agent briefs no longer hardcode skill paths. `SKILL.md` and the references now use `python3 <skill dir>/scripts/greenfield.py <command> --json`, and a test parses every such line with the real parser.
+
+### Deprecated (CLI)
+
+- Running `score_project.py`, `gf_observe.py`, `gf_runs.py`, `gf_ledger.py`, `gf_evidence.py`, `gf_portfolio.py` or `configure_hooks.py` directly prints one stderr note naming the `greenfield` command (`GREENFIELD_NO_DEPRECATION=1` silences it). They keep working until 3.0. `install.py` stays as the no-dependency install path.
 
 ### Changed (observe/install)
 

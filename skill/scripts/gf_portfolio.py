@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 import re
 import sys
-from gf_common import GFError, atomic_write, atomic_write_json, VERSION, finite_nonneg, load_json, resolve_inside
+from gf_common import old_entry, GFError, atomic_write, atomic_write_json, VERSION, finite_nonneg, load_json, resolve_inside
 from score_project import VERDICTS, score_file
 
 SCENARIOS={
@@ -163,16 +163,19 @@ def to_markdown(result):
     return '\n'.join(lines)+'\n'
 
 
+def run(manifest,output,markdown=None):
+    """Rank the manifest's opportunities, write output (and markdown), return the one-line summary dict."""
+    manifest,output=Path(manifest),Path(output)
+    out=evaluate_portfolio(json.loads(manifest.read_text(encoding='utf-8')),manifest.resolve().parent)
+    output.parent.mkdir(mode=0o700,parents=True,exist_ok=True);atomic_write_json(output,out,mode=0o600)
+    if markdown:markdown=Path(markdown);markdown.parent.mkdir(mode=0o700,parents=True,exist_ok=True);atomic_write(markdown,to_markdown(out),mode=0o600)
+    return {'ranked':sum(r['rank'] is not None for r in out['opportunities']),'opportunities':len(out['opportunities']),'recommendation':out['recommendation']}
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--version',action='version',version=f'%(prog)s {VERSION}');p.add_argument('manifest',type=Path);p.add_argument('--output',type=Path,required=True);p.add_argument('--markdown',type=Path)
     args=p.parse_args(argv)
     try:
-        root=args.manifest.resolve().parent
-        out=evaluate_portfolio(json.loads(args.manifest.read_text(encoding='utf-8')),root)
-        args.output.parent.mkdir(mode=0o700,parents=True,exist_ok=True);atomic_write_json(args.output,out,mode=0o600)
-        if args.markdown:args.markdown.parent.mkdir(mode=0o700,parents=True,exist_ok=True);atomic_write(args.markdown,to_markdown(out),mode=0o600)
-        print(json.dumps({'ranked':sum(r['rank'] is not None for r in out['opportunities']),'opportunities':len(out['opportunities']),'recommendation':out['recommendation']},indent=2))
+        print(json.dumps(run(args.manifest,args.output,args.markdown),indent=2))
     except (OSError,ValueError,TypeError,KeyError) as exc:
         print('ERROR:',exc,file=sys.stderr);return 2
     return 0
-if __name__=='__main__':raise SystemExit(main())
+if __name__=='__main__':raise SystemExit(old_entry(main,'gf_portfolio.py','greenfield portfolio'))

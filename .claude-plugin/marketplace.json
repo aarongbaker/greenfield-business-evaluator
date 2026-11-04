@@ -1,0 +1,14 @@
+{
+  "name": "greenfield",
+  "description": "GreenField business evaluator: skill and research agents for evaluating a business idea before building it.",
+  "owner": {
+    "name": "aarongbaker"
+  },
+  "plugins": [
+    {
+      "name": "greenfield-business-evaluator",
+      "source": "./",
+      "description": "Evaluate a business idea before building it. Skill and nine research agents; hooks stay opt-in via the CLI."
+    }
+  ]
+}

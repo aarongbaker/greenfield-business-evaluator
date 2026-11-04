@@ -9,7 +9,6 @@ forgery; it is not independent proof of behavior.
 from __future__ import annotations
 import argparse
 import datetime as dt
-import fcntl
 import hashlib
 import hmac
 import json
@@ -19,7 +18,8 @@ import secrets
 import sys
 import uuid
 
-from gf_common import GFError, VERSION, atomic_write, resolve_inside
+from gf_common import old_entry, GFError, VERSION, atomic_write, resolve_inside
+from gf_platform import lock_exclusive, require_locking, unlock
 
 ALLOWED = {"hypothesis", "customer_interview", "customer_action", "paid_test", "signed_commitment", "repeat_purchase", "feasibility_proof", "experiment_result", "decision_revision", "failure", "note", "source_review"}
 BEHAVIOR = {"customer_action", "paid_test", "signed_commitment", "repeat_purchase", "feasibility_proof"}
@@ -155,9 +155,10 @@ def summary_of(fields):
 def _write(path, fields, key=None):
     """Append one event under an exclusive lock; sign it when key is given."""
     path = Path(path)
+    require_locking('greenfield ledger record')  # before the file is created, on platforms without fcntl
     # Exclusive OS-level advisory lock across processes; file remains append only.
     with open(path, 'a+', encoding='utf-8', opener=lambda p, fl: os.open(p, fl, 0o600)) as f:
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        lock_exclusive(f.fileno(), 'greenfield ledger record')
         try:
             existing = read_ledger(path)
             data = {'seq': len(existing)+1, 'id': 'EV-'+uuid.uuid4().hex[:12], 'recorded_at': dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -171,7 +172,7 @@ def _write(path, fields, key=None):
             os.fsync(f.fileno())
             return data
         finally:
-            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            unlock(f.fileno())
 
 
 def append(path, kind, project, hypothesis, outcome='', artifact=None, attester='', observed_at='', notes='', pillars=None, claim_id='', experiment_id='', confirm=tty_confirm):
@@ -298,6 +299,23 @@ def reviewed_claims(ledger_path, report_path):
     return out
 
 
+def handle(args):
+    """Run one parsed ledger command (record, verify, summary, reattest); return its JSON-ready result."""
+    if args.command=='record':
+        # A typed --artifact is relative to the shell's folder; append() then requires it inside the ledger's folder.
+        artifact=str(Path(args.artifact).absolute()) if args.artifact else None
+        return append(args.ledger,args.kind,args.project,args.hypothesis,args.outcome,artifact,args.attester,args.observed_at,args.notes,args.pillar,args.claim_id,args.experiment_id)
+    if args.command=='reattest':
+        return reattest(args.ledger)
+    events=read_ledger(args.ledger)
+    value={'valid':True,'events':len(events),'last_hash':events[-1]['hash'] if events else 'GENESIS'}
+    if args.command=='summary':
+        from collections import Counter
+        value['by_type']=dict(Counter(e['kind'] for e in events))
+        value['behavior_receipts']=[{'id':e['id'],'kind':e['kind'],'pillar_ids':e['pillar_ids'],'integrity':verified_behavior(args.ledger,e['id'])[0]} for e in events if e['kind'] in BEHAVIOR]
+    return value
+
+
 def main(argv=None):
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--version',action='version',version=f'%(prog)s {VERSION}')
@@ -320,23 +338,10 @@ def main(argv=None):
     r=sub.add_parser('reattest',help='interactively re-confirm unsigned attested events');r.add_argument('--ledger',required=True)
     args=ap.parse_args(argv)
     try:
-        if args.command=='record':
-            # A typed --artifact is relative to the shell's folder; append() then requires it inside the ledger's folder.
-            artifact=str(Path(args.artifact).absolute()) if args.artifact else None
-            value=append(args.ledger,args.kind,args.project,args.hypothesis,args.outcome,artifact,args.attester,args.observed_at,args.notes,args.pillar,args.claim_id,args.experiment_id)
-        elif args.command=='reattest':
-            value=reattest(args.ledger)
-        else:
-            events=read_ledger(args.ledger)
-            value={'valid':True,'events':len(events),'last_hash':events[-1]['hash'] if events else 'GENESIS'}
-            if args.command=='summary':
-                from collections import Counter
-                value['by_type']=dict(Counter(e['kind'] for e in events))
-                value['behavior_receipts']=[{'id':e['id'],'kind':e['kind'],'pillar_ids':e['pillar_ids'],'integrity':verified_behavior(args.ledger,e['id'])[0]} for e in events if e['kind'] in BEHAVIOR]
-        print(json.dumps(value,indent=2))
+        print(json.dumps(handle(args),indent=2))
     except (OSError, ValueError, KeyError) as exc:
         print(f'ERROR: {exc}', file=sys.stderr);return 2
     return 0
 
 if __name__=='__main__':
-    raise SystemExit(main())
+    raise SystemExit(old_entry(main,'gf_ledger.py','greenfield ledger'))

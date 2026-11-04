@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-from gf_common import VERSION, atomic_write_json
+from gf_common import VERSION, atomic_write_json, old_entry
 
 MAX_BYTES = 2_000_000
 TIMEOUT = 8
@@ -202,6 +202,16 @@ def analyze(data, *, allow_network=False, fetcher=None, as_of=None, stale_days=7
             'limitations':'Source text and matching excerpts do not establish claim truth. Screenshots, PDFs, JS pages, paywalls, semantics and behavioral receipts need human review.'}
 
 
+def check(evaluation,output,allow_network=False,stale_days=730):
+    """Check the evaluation's sources, write the full report to output, return its summary."""
+    data=json.loads(Path(evaluation).read_text(encoding='utf-8'))
+    if stale_days<1:raise ValueError('stale-days must be positive')
+    report=analyze(data,allow_network=allow_network,as_of=data.get('as_of'),stale_days=stale_days)
+    output=Path(output);output.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+    atomic_write_json(output,report,mode=0o600)
+    return report['summary']
+
+
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--version',action='version',version=f'%(prog)s {VERSION}')
@@ -211,14 +221,9 @@ def main(argv=None):
     p.add_argument('--stale-days',type=int,default=730)
     args=p.parse_args(argv)
     try:
-        data=json.loads(args.evaluation.read_text(encoding='utf-8'))
-        if args.stale_days<1:raise ValueError('stale-days must be positive')
-        report=analyze(data,allow_network=args.allow_network,as_of=data.get('as_of'),stale_days=args.stale_days)
-        args.output.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
-        atomic_write_json(args.output,report,mode=0o600)
-        print(json.dumps(report['summary'],indent=2))
+        print(json.dumps(check(args.evaluation,args.output,args.allow_network,args.stale_days),indent=2))
     except (OSError,ValueError,json.JSONDecodeError) as exc:
         print('ERROR:',exc,file=sys.stderr);return 2
     return 0
 
-if __name__=='__main__':raise SystemExit(main())
+if __name__=='__main__':raise SystemExit(old_entry(main,'gf_evidence.py','greenfield sources check'))

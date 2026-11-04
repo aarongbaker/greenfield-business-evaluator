@@ -1,0 +1,23 @@
+{
+  "name": "greenfield-business-evaluator",
+  "version": "2.1.0",
+  "description": "Evaluate a business idea before building it: parallel research roles, an evidence ledger and a deterministic scorer. Skill and research agents only; no hooks.",
+  "author": {
+    "name": "aarongbaker"
+  },
+  "license": "MIT",
+  "skills": [
+    "./skill"
+  ],
+  "agents": [
+    "./platform/claude/agents/gf-competition.md",
+    "./platform/claude/agents/gf-distribution.md",
+    "./platform/claude/agents/gf-economics.md",
+    "./platform/claude/agents/gf-execution.md",
+    "./platform/claude/agents/gf-market.md",
+    "./platform/claude/agents/gf-problem.md",
+    "./platform/claude/agents/gf-redteam.md",
+    "./platform/claude/agents/gf-timing.md",
+    "./platform/claude/agents/gf-value.md"
+  ]
+}

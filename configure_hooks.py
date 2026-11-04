@@ -1,119 +1,12 @@
 #!/usr/bin/env python3
-"""Opt-in local observability hooks; preserves unrelated hooks and supports removal.
-
-Run after install.py. Does not modify model permissions, API settings, or global config.
-"""
-import argparse
-import json
-from pathlib import Path
-import shlex
+"""Opt-in local observability hooks (the code lives in skill/scripts/gf_hooks.py; Python 3.11+)."""
+import pathlib
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / "skill" / "scripts"))
-from gf_common import VERSION, atomic_write_json
-from gf_roles import hook_matcher
-
-NAME = "greenfield-business-evaluator"
-MARKER = "gf_observe.py"
-REGEX = hook_matcher()
-PLATFORM_EVENTS = {
-    "claude": ("SubagentStart", "SubagentStop", "PreToolUse", "PostToolUseFailure"),
-    "codex": ("SubagentStart", "SubagentStop", "PreToolUse"),
-}
-# Removal also scans events dropped from the table (legacy PostToolUse) and both platforms' sets.
-SCAN_EVENTS = tuple(dict.fromkeys(e for v in PLATFORM_EVENTS.values() for e in v)) + ("PostToolUse",)
-
-
-def path_for(project, platform):
-    if platform == "claude":
-        return project / ".claude" / "settings.local.json"
-    return project / ".codex" / "hooks.json"
-
-
-def script_for(project, platform):
-    base = project / (".claude" if platform == "claude" else ".agents") / "skills" / NAME
-    return base / "scripts" / "gf_observe.py"
-
-
-def transform(path, command, mode, *, platform):
-    if platform not in PLATFORM_EVENTS:
-        raise ValueError(f"Unknown platform: {platform!r}")
-    old = json.loads(path.read_text()) if path.is_file() else {}
-    if not isinstance(old, dict):
-        raise ValueError(f"Expected object at {path}")
-    data = json.loads(json.dumps(old))
-    hooks = data.setdefault("hooks", {})
-    if not isinstance(hooks, dict):
-        raise ValueError(f"Expected hooks object at {path}")
-    for event in SCAN_EVENTS:
-        groups = hooks.setdefault(event, [])
-        if not isinstance(groups, list):
-            raise ValueError(f"Expected array for hooks.{event} in {path}")
-        kept = []
-        for group in groups:
-            if not isinstance(group, dict):
-                kept.append(group)
-                continue
-            hs = group.get("hooks")
-            if not isinstance(hs, list):
-                kept.append(group)
-                continue
-            remainder = [h for h in hs if not (isinstance(h, dict) and (MARKER in str(h.get("command", "")) and " hook --project " in str(h.get("command", ""))))]
-            if remainder:
-                copy = dict(group)
-                copy["hooks"] = remainder
-                kept.append(copy)
-        if mode == "install" and event in PLATFORM_EVENTS[platform]:
-            if event.startswith("Subagent"):
-                new_group = {"matcher": REGEX, "hooks": [{"type": "command", "command": command, "timeout": 5}]}
-            else:
-                # tool matchers filter tool_name, not agent_type; hook code filters agent_type.
-                new_group = {"hooks": [{"type": "command", "command": command, "timeout": 5}]}
-            kept.append(new_group)
-        if kept:
-            hooks[event] = kept
-        else:
-            hooks.pop(event, None)
-    if not hooks:
-        data.pop("hooks", None)
-    # Avoid writing back if unchanged; never overwrite without parsing existing JSON.
-    if data != old:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(path, data)
-    return data != old
-
-
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
-    parser.add_argument("action", choices=("install", "remove"))
-    parser.add_argument("--project", default=".")
-    parser.add_argument("--platform", choices=("claude", "codex", "both"), default="both")
-    args = parser.parse_args(argv)
-    project = Path(args.project).expanduser().resolve()
-    platforms = ("claude", "codex") if args.platform == "both" else (args.platform,)
-    if args.action == "install":
-        missing = [str(script_for(project, name)) for name in platforms if not script_for(project, name).is_file()]
-        if missing:
-            parser.error("Install the Greenfield skill first. Missing:\n" + "\n".join(missing))
-    # Preflight JSON validity on every destination before modifying any of them.
-    for platform in platforms:
-        path = path_for(project, platform)
-        if path.is_file():
-            data = json.loads(path.read_text())
-            if not isinstance(data, dict) or not isinstance(data.get("hooks", {}), dict):
-                parser.error(f"Unexpected hooks JSON format: {path}")
-    for platform in platforms:
-        script = script_for(project, platform)
-        # Absolute script and project paths allow hooks to work from nested cwd.
-        cmd = " ".join(("python3", shlex.quote(str(script)), "hook", "--project", shlex.quote(str(project)), "--provider", platform))
-        changed = transform(path_for(project, platform), cmd, args.action, platform=platform)
-        print(("Updated" if changed else "Already current"), path_for(project, platform))
-    if args.action == "install":
-        print("Review/trust project hooks in your agent client. These hooks observe metadata only and never block execution.")
-        print("For Codex, open /hooks and approve the newly installed hooks if prompted.")
-    return 0
-
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "skill" / "scripts"))
+from gf_hooks import *  # noqa: F401,F403  (tests and callers use configure_hooks.transform)
+from gf_hooks import main
+from gf_common import old_entry
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(old_entry(main, "configure_hooks.py", "greenfield hooks"))

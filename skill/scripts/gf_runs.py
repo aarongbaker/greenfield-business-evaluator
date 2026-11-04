@@ -8,13 +8,13 @@ user-selected freshness horizon is met. Every resume is explicit.
 from __future__ import annotations
 import argparse
 import datetime as dt
-import fcntl
 import hashlib
 import json
 from pathlib import Path
 import sys
-from gf_common import VERSION, finite_nonneg, resolve_inside
+from gf_common import old_entry, VERSION, finite_nonneg, resolve_inside
 from gf_profiles import BASE
+from gf_platform import lock_exclusive, unlock
 from gf_observe import AGENTS,active_run,emit,atomic_json,current_state,file_paths,link_research
 
 ROLES=AGENTS
@@ -39,7 +39,7 @@ def transact(project,run_id,callback):
     lock=p.with_suffix('.lock')
     lock.touch(mode=0o600)
     with lock.open('a+') as lf:
-        fcntl.flock(lf,fcntl.LOCK_EX)
+        lock_exclusive(lf.fileno(),"greenfield task")
         try:
             plan=json.loads(p.read_text(encoding='utf-8')) if p.exists() else None
             outcome=callback(plan)
@@ -47,7 +47,7 @@ def transact(project,run_id,callback):
             else:plan,result=outcome,None
             atomic_json(p,plan)
             return plan,result
-        finally:fcntl.flock(lf,fcntl.LOCK_UN)
+        finally:unlock(lf.fileno())
 
 def plan(project,run_id):
     def create(doc):
@@ -215,4 +215,4 @@ def main(argv=None):
         print('ERROR:',exc,file=sys.stderr);return 2
     return 0
 
-if __name__=='__main__':raise SystemExit(main())
+if __name__=='__main__':raise SystemExit(old_entry(main,'gf_runs.py','greenfield task'))

@@ -19,13 +19,11 @@ import stat
 import sys
 import threading
 import time
+import unicodedata
 from urllib.parse import urlsplit, urlunsplit, parse_qs
 from uuid import uuid4
-try:
-    import fcntl
-except ImportError:  # Windows: no lock, W26 gives the clear error
-    fcntl = None
-from gf_common import VERSION, GFError, atomic_write_json, gitignore_missing, load_json, report, resolve_inside
+from gf_common import old_entry, VERSION, GFError, atomic_write_json, gitignore_missing, load_json, report, resolve_inside
+from gf_platform import lock_exclusive, unlock
 from gf_roles import ROLES as _ROLES, REDTEAM, SPECIALISTS, normalize
 
 AGENTS = [r.claude_id for r in _ROLES]
@@ -148,8 +146,7 @@ def active_lock(project):
     private_dir(root)
     fd = os.open(root / ".active.lock", os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        if fcntl:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+        lock_exclusive(fd, "greenfield start")
         yield
     finally:
         os.close(fd)  # closing releases the flock
@@ -205,6 +202,54 @@ def new_run(project, idea, provider="both", demo=False, replace=False, research_
             atomic_json(storage(project) / "active.json", {"run_id": run_id})
     emit(project, run_id, "run_started", provider=provider, summary="Research run initialized")
     return run_id
+
+
+SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,47}\Z")
+
+
+def slugify(idea, fallback_date):
+    """ASCII slug of at most 48 characters, cut on a word boundary; idea-YYYYMMDD when nothing usable remains."""
+    s = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", idea).encode("ascii", "ignore").decode().lower()).strip("-")
+    if len(s) > 48:
+        s = (s[:48].rsplit("-", 1)[0] if s[48] != "-" and "-" in s[:48] else s[:48]).strip("-")
+    return s or "idea-" + fallback_date.replace("-", "")
+
+
+def scaffold(project, args):
+    """greenfield start: guard, research folder, dated evaluation.json, run record, task plan (W24)."""
+    project = Path(project).expanduser().resolve()
+    as_of = args.as_of or dt.date.today().isoformat()  # local date
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", as_of) or dt.date.fromisoformat(as_of).isoformat() != as_of:
+        raise GFError(f"--as-of {as_of!r} is not a YYYY-MM-DD date", hint="greenfield start --idea '...' --as-of 2026-11-03")
+    old = None if args.new else running_run(project)
+    if old:
+        raise ActiveRunError(old[0], old[1].get("idea", ""), old[1].get("created_at"))
+    slug = args.slug or slugify(args.idea, as_of)
+    if not SLUG_RE.match(slug):
+        raise GFError(f"slug {slug!r} must match [a-z0-9][a-z0-9-]{{0,47}}", hint="greenfield start --idea '...' --slug my-idea")
+    folder = resolve_inside(project, args.research_dir or f"research/greenfield/{slug}")
+    ev = folder / "evaluation.json"
+    if ev.exists():
+        raise GFError("evaluation.json already exists; not overwriting", path=ev, hint="pass --slug NAME, or run `greenfield status`")
+    (folder / "specialists").mkdir(parents=True, exist_ok=True)
+    folder = resolve_inside(project, folder)  # re-check after mkdir: a symlink must not have redirected it
+    data = load_json(ASSETS / "evaluation-template.json")
+    data["as_of"] = as_of
+    data["project"].update(name=safe_text(args.idea, 80), idea=safe_text(args.idea, 200), business_model=args.model)
+    for key, value in (("initial_customer", args.customer), ("geography", args.geography)):
+        if value:
+            data["project"][key] = value
+    data["execution"]["mode"] = "not_started"
+    data["evidence_ledger"], data["verification_report"] = "experiment-ledger.jsonl", "source-verification.json"
+    atomic_write_json(ev, data, mode=0o600)
+    rid = new_run(project, args.idea, args.provider, replace=args.new, research_dir=folder)
+    if not args.no_plan:
+        import gf_runs
+        gf_runs.plan(project, rid)
+    rel = folder.relative_to(project).as_posix()
+    prompt = f"Evaluate this idea with the greenfield-business-evaluator skill: {args.idea} (depth: {args.depth}; research folder: {rel})"
+    return {"run_id": rid, "slug": slug, "research_dir": rel, "evaluation": f"{rel}/evaluation.json",
+            "next": [f"Claude Code: /greenfield-business-evaluator {args.idea}", f"Codex: {prompt}", "greenfield dashboard"]}
 
 
 def emit(project, run_id, event, *, provider="manual", agent="orchestrator", agent_id="", session_id="", summary="", tool="", url="", tokens=0):
@@ -664,6 +709,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return
 
 
+def make_server(project, port, allow_hosts=()):
+    """Loopback-only Mission Control server for project (not yet serving)."""
+    tighten(project)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server.project = project
+    server.allow_hosts = list(allow_hosts)
+    return server
+
+
+def demo_run(project):
+    """Create a labelled sample run; it never displaces a real running run."""
+    rid = new_run(project, "Route planning for independent commercial laundries", "demo", True)
+    for i, name in enumerate(AGENTS[:-1]):
+        emit(project, rid, "agent_started", agent=name, provider="demo", summary="Sample agent started")
+        emit(project, rid, "tool_started", agent=name, provider="demo", tool="WebSearch", summary="Sample search")
+        if i % 2 == 0:
+            emit(project, rid, "source_seen", agent=name, provider="demo", url="https://www.census.gov/", summary="Sample public source")
+        if i < 5:
+            emit(project, rid, "agent_completed", agent=name, provider="demo", summary="Sample task completed")
+    emit(project, rid, "note", summary="DEMO DATA ONLY — no real agents executed", provider="demo")
+    return rid
+
+
 def add_cli(sub, name, *, project=True, run=False):
     p = sub.add_parser(name)
     if project: p.add_argument("--project", default=".")
@@ -717,10 +785,7 @@ def main(argv=None):
     elif args.command == "serve":
         if args.port < 1 or args.port > 65535:
             parser.error("Port must be 1–65535")
-        tighten(project)
-        server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-        server.project = project
-        server.allow_hosts = args.allow_host
+        server = make_server(project, args.port, args.allow_host)
         if args.allow_host:
             print(f"WARNING: also answering Host names {', '.join(args.allow_host)}; only use on networks you trust.", flush=True)
         print(f"Mission Control: http://127.0.0.1:{args.port}  (local machine only)", flush=True)
@@ -747,16 +812,7 @@ def main(argv=None):
         count = ingest_codex(project, rid, sys.stdin)
         print(f"Captured {count} sanitized Codex events", file=sys.stderr)
     elif args.command == "demo":
-        rid = new_run(project, "Route planning for independent commercial laundries", "demo", True)
-        agents = AGENTS[:-1]
-        for i, name in enumerate(agents):
-            emit(project, rid, "agent_started", agent=name, provider="demo", summary="Sample agent started")
-            emit(project, rid, "tool_started", agent=name, provider="demo", tool="WebSearch", summary="Sample search")
-            if i % 2 == 0:
-                emit(project, rid, "source_seen", agent=name, provider="demo", url="https://www.census.gov/", summary="Sample public source")
-            if i < 5:
-                emit(project, rid, "agent_completed", agent=name, provider="demo", summary="Sample task completed")
-        emit(project, rid, "note", summary="DEMO DATA ONLY — no real agents executed", provider="demo")
+        rid = demo_run(project)
         if active_run(project) != rid:
             print("Demo run created but not activated; open it from the run picker", file=sys.stderr)
         print(rid)
@@ -768,4 +824,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    # hook runs inside the agent host on every tool call: no hint there
+    raise SystemExit(old_entry(main, "gf_observe.py", None if cmd == "hook" else "greenfield " + {"serve": "dashboard", "emit": "event emit"}.get(cmd, cmd).strip()))

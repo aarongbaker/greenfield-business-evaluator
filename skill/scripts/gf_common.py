@@ -10,8 +10,8 @@ import os
 from pathlib import Path
 import sys
 from uuid import uuid4
+from _version import __version__ as VERSION
 
-VERSION = "2.0.0"
 MAX_JSON_BYTES = 5 * 1024 * 1024
 
 
@@ -34,6 +34,15 @@ def report(err, *, stream=sys.stderr):
     if getattr(err, "hint", None):
         print(f"  next: {err.hint}", file=stream)
     return getattr(err, "code", 2)
+
+
+def old_entry(main, old, new):
+    """Run an old script's main(), then one stderr line naming its `greenfield` command (GREENFIELD_NO_DEPRECATION=1 silences it)."""
+    try:
+        return main()
+    finally:
+        if new and not os.environ.get("GREENFIELD_NO_DEPRECATION"):
+            print(f"note: {old} is now '{new}'; this script keeps working until 3.0", file=sys.stderr)
 
 
 def resolve_inside(base, candidate, *, must_exist=False):
