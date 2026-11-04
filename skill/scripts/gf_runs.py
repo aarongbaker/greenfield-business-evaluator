@@ -15,7 +15,7 @@ from pathlib import Path
 import sys
 from gf_common import VERSION, finite_nonneg, resolve_inside
 from gf_profiles import BASE
-from gf_observe import AGENTS,active_run,emit,atomic_json,current_state,file_paths
+from gf_observe import AGENTS,active_run,emit,atomic_json,current_state,file_paths,link_research
 
 ROLES=AGENTS
 
@@ -163,6 +163,9 @@ def coverage(project,run_id,evaluation,report=None):
         doc['coverage']=pillar_data
         return doc,None
     transact(project,run_id,update)
+    if not json.loads(file_paths(project,run_id)[0].read_text(encoding='utf-8')).get('research_dir'):
+        try:link_research(project,run_id,Path(evaluation).resolve().parent)
+        except ValueError:pass  # outside the project or a demo run: the dashboard asks for `link` instead
     emit(project,run_id,'note',summary='Claim coverage updated from evaluation files')
     return pillar_data
 

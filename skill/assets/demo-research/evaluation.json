@@ -1,0 +1,240 @@
+{
+  "project": {
+    "name": "SAMPLE DATA - Brightwave Laundry Routes",
+    "idea": "SAMPLE DATA (fictional): route-planning software for independent commercial laundries. Not a real business.",
+    "initial_customer": "Independent commercial laundries with 3-15 delivery vans",
+    "geography": "US",
+    "business_type": "B2B SaaS",
+    "goal": "bootstrapped",
+    "business_model": "general"
+  },
+  "as_of": "2026-10-23",
+  "execution": {
+    "web_used": true,
+    "subagents_actual": 0,
+    "mode": "single-agent fallback",
+    "customer_validation_performed": false
+  },
+  "pillars": {
+    "problem": {
+      "quality": 4,
+      "evidence": 2,
+      "finding": "SAMPLE: owners report manual route planning costs hours each week.",
+      "claim_ids": [
+        "C1"
+      ],
+      "behaviors": []
+    },
+    "market": {
+      "quality": 4,
+      "evidence": 2,
+      "finding": "SAMPLE: several thousand reachable shops, estimate only.",
+      "claim_ids": [
+        "C2"
+      ],
+      "behaviors": []
+    },
+    "value": {
+      "quality": 4,
+      "evidence": 2,
+      "finding": "SAMPLE: saved driver hours are plausible but untested.",
+      "claim_ids": [
+        "C3"
+      ],
+      "behaviors": []
+    },
+    "economics": {
+      "quality": 3,
+      "evidence": 2,
+      "finding": "SAMPLE: $250/month price leaves healthy margin on paper.",
+      "claim_ids": [
+        "C4"
+      ],
+      "behaviors": []
+    },
+    "distribution": {
+      "quality": 3,
+      "evidence": 2,
+      "finding": "SAMPLE: trade-association channel looks promising, unproven.",
+      "claim_ids": [
+        "C5"
+      ],
+      "behaviors": []
+    },
+    "competition": {
+      "quality": 4,
+      "evidence": 2,
+      "finding": "SAMPLE: generic routing tools exist, none laundry-specific.",
+      "claim_ids": [
+        "C6"
+      ],
+      "behaviors": []
+    },
+    "execution": {
+      "quality": 4,
+      "evidence": 2,
+      "finding": "SAMPLE: a small team can build an MVP.",
+      "claim_ids": [
+        "C7"
+      ],
+      "behaviors": []
+    },
+    "timing": {
+      "quality": 3,
+      "evidence": 2,
+      "finding": "SAMPLE: fuel costs keep route efficiency in focus.",
+      "claim_ids": [
+        "C8"
+      ],
+      "behaviors": []
+    }
+  },
+  "claims": [
+    {
+      "id": "C1",
+      "pillar": "problem",
+      "statement": "SAMPLE: owners report manual route planning costs hours each week.",
+      "classification": "estimate",
+      "source_url": "",
+      "source_title": "SAMPLE DATA - no real source",
+      "published_date": "2026-01-01",
+      "accessed_date": "2026-10-23",
+      "independent_origin": false,
+      "notes": "SAMPLE DATA: fictional claim for the Mission Control demo; formula: illustrative only."
+    },
+    {
+      "id": "C2",
+      "pillar": "market",
+      "statement": "SAMPLE: several thousand reachable shops, estimate only.",
+      "classification": "estimate",
+      "source_url": "",
+      "source_title": "SAMPLE DATA - no real source",
+      "published_date": "2026-01-01",
+      "accessed_date": "2026-10-23",
+      "independent_origin": false,
+      "notes": "SAMPLE DATA: fictional claim for the Mission Control demo; formula: illustrative only."
+    },
+    {
+      "id": "C3",
+      "pillar": "value",
+      "statement": "SAMPLE: saved driver hours are plausible but untested.",
+      "classification": "estimate",
+      "source_url": "",
+      "source_title": "SAMPLE DATA - no real source",
+      "published_date": "2026-01-01",
+      "accessed_date": "2026-10-23",
+      "independent_origin": false,
+      "notes": "SAMPLE DATA: fictional claim for the Mission Control demo; formula: illustrative only."
+    },
+    {
+      "id": "C4",
+      "pillar": "economics",
+      "statement": "SAMPLE: $250/month price leaves healthy margin on paper.",
+      "classification": "estimate",
+      "source_url": "",
+      "source_title": "SAMPLE DATA - no real source",
+      "published_date": "2026-01-01",
+      "accessed_date": "2026-10-23",
+      "independent_origin": false,
+      "notes": "SAMPLE DATA: fictional claim for the Mission Control demo; formula: illustrative only."
+    },
+    {
+      "id": "C5",
+      "pillar": "distribution",
+      "statement": "SAMPLE: trade-association channel looks promising, unproven.",
+      "classification": "estimate",
+      "source_url": "",
+      "source_title": "SAMPLE DATA - no real source",
+      "published_date": "2026-01-01",
+      "accessed_date": "2026-10-23",
+      "independent_origin": false,
+      "notes": "SAMPLE DATA: fictional claim for the Mission Control demo; formula: illustrative only."
+    },
+    {
+      "id": "C6",
+      "pillar": "competition",
+      "statement": "SAMPLE: generic routing tools exist, none laundry-specific.",
+      "classification": "estimate",
+      "source_url": "",
+      "source_title": "SAMPLE DATA - no real source",
+      "published_date": "2026-01-01",
+      "accessed_date": "2026-10-23",
+      "independent_origin": false,
+      "notes": "SAMPLE DATA: fictional claim for the Mission Control demo; formula: illustrative only."
+    },
+    {
+      "id": "C7",
+      "pillar": "execution",
+      "statement": "SAMPLE: a small team can build an MVP.",
+      "classification": "estimate",
+      "source_url": "",
+      "source_title": "SAMPLE DATA - no real source",
+      "published_date": "2026-01-01",
+      "accessed_date": "2026-10-23",
+      "independent_origin": false,
+      "notes": "SAMPLE DATA: fictional claim for the Mission Control demo; formula: illustrative only."
+    },
+    {
+      "id": "C8",
+      "pillar": "timing",
+      "statement": "SAMPLE: fuel costs keep route efficiency in focus.",
+      "classification": "estimate",
+      "source_url": "",
+      "source_title": "SAMPLE DATA - no real source",
+      "published_date": "2026-01-01",
+      "accessed_date": "2026-10-23",
+      "independent_origin": false,
+      "notes": "SAMPLE DATA: fictional claim for the Mission Control demo; formula: illustrative only."
+    }
+  ],
+  "hard_blockers": [
+    {
+      "id": "B1",
+      "status": "plausible",
+      "fatal": false,
+      "finding": "SAMPLE: owners may not pay for software.",
+      "source_ids": [
+        "C3"
+      ],
+      "mitigation": "Run paid pilot offers."
+    }
+  ],
+  "experiments": [
+    {
+      "id": "X1",
+      "hypothesis": "SAMPLE: 5 of 20 laundries accept a paid $250/month pilot",
+      "pillar": "economics",
+      "method": "Direct outreach with a priced offer",
+      "success_threshold": "5 paid pilots",
+      "status": "proposed"
+    }
+  ],
+  "market_model": {
+    "currency": "USD",
+    "tam": {
+      "low": null,
+      "base": null,
+      "high": null,
+      "formula": "not calculated",
+      "sources": []
+    },
+    "sam": {
+      "low": null,
+      "base": null,
+      "high": null,
+      "formula": "not calculated",
+      "sources": []
+    },
+    "som": {
+      "low": null,
+      "base": null,
+      "high": null,
+      "formula": "not calculated",
+      "sources": []
+    }
+  },
+  "schema_version": "2.0",
+  "evidence_ledger": "experiment-ledger.jsonl",
+  "verification_report": "source-verification.json",
+  "pilot_gates": {}
+}

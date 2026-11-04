@@ -448,6 +448,47 @@ def next_step(result, data):
     return "Run the experiment that tests the weakest core pillar, then re-score."
 
 
+def verdict_gap(result):
+    """Unmet PROCEED_TO_BOUNDED_PILOT requirements, by the same rules as score(): dicts with key, text and, for pillar
+    fields, pillar/field/current/needed. Empty when already proceeding; only the blockers when one is confirmed fatal."""
+    if result["decision"] == "PROCEED_TO_BOUNDED_PILOT":
+        return []
+    if result["confirmed_fatal_blockers"]:
+        return [{"key": f"blocker:{b}", "text": f"Resolve blocker {b}"} for b in result["confirmed_fatal_blockers"]]
+    qs, ev, weights = result["quality_scores"], result["evidence_scores"], result["pillar_weights"]
+    # Unassessed pillars count as 3 (the core floor); then raise the heaviest pillars until the 75 bar is met.
+    need = {p: max(3 if p in CORE or qs[p] is None else 0, qs[p] or 0) for p in qs}
+    while round(sum(weights[p] * need[p] / 5 for p in weights), 1) < 75:
+        need[max((p for p in need if need[p] < 5), key=lambda p: (weights[p], -need[p]))] += 1
+    item = lambda p, f, cur, n: {"key": f"{p}.{f}", "pillar": p, "field": f, "current": cur, "needed": n,
+                                 "text": f"{p} {f} {'not assessed' if cur is None else cur} → {n}"}
+    out = [item(p, "quality", None, need[p]) for p in qs if qs[p] is None]
+    if not result["web_research_performed"]:
+        out.append({"key": "web", "text": "run live web research"})
+    out += [item(p, "quality", qs[p], need[p]) for p in qs if qs[p] is not None and need[p] > qs[p]]
+    out += [item(p, "evidence", ev[p], 3) for p in CORE if ev[p] < 3]
+    out += [{"key": f"blocker:{b}", "text": f"Resolve blocker {b}"} for b in result["unresolved_plausible_fatal_blockers"]]
+    out += [{"key": f"gate:{g}", "text": f"close gate {g}"} for g in result["missing_pilot_gates"]]
+    if result["source_review_pending"]:
+        n = sum(w.startswith("Unreviewed public source claim") for w in result["warnings"])
+        out.append({"key": "source_review", "text": f"review {n} source{'s' * (n != 1)}" if n else "verify sources and record a human review"})
+    if any("gf_ledger.py reattest" in w for w in result["warnings"]):
+        out.append({"key": "reattest", "text": "re-attest ledger receipts on this machine"})
+    return out
+
+
+def gap_text(gap):
+    """One line for the verdict gap, shared by the terminal summary and Mission Control: pillar fields grouped by target."""
+    groups, rest = {}, []
+    for i in gap:
+        if "field" in i:
+            groups.setdefault((i["field"], i["needed"]), []).append(i["pillar"])
+        else:
+            rest.append(i["text"])
+    parts = [f"{f} {n}: {', '.join(ps)}" for (f, n), ps in sorted(groups.items(), key=lambda kv: (kv[0][0] != "quality", -kv[0][1]))]
+    return "; ".join(parts + rest)
+
+
 # (pattern with one name group, summary when it matches more than once)
 COLLAPSE = (
     (r"pillars\.(\w+): no claims linked$", "{n} pillars have no linked claims: {names}"),
@@ -522,6 +563,9 @@ def render_text(result, *, color, width=80, glyphs="unicode", all_warnings=False
         out += [line(f"  {g['item']} {w}") for w in shown]
         if len(items) > len(shown):
             out.append(f"  +{len(items) - len(shown)} more")
+    gap = verdict_gap(result)
+    if gap:
+        out += textwrap.wrap("To reach Proceed: " + gap_text(gap), width, subsequent_indent="  ")
     out += textwrap.wrap(clip("Next: " + result["next_step"], 400, g["more"]), width, subsequent_indent="      ")
     out.append("Heuristic triage, not a probability of commercial success.")
     text = "\n".join(out) + "\n"
@@ -540,6 +584,15 @@ def score_file(path):
         return None, errors, warnings
     result = score(data, warnings)
     return result, [], result["warnings"]
+
+
+def recompute_decision(eval_path, project_root):
+    """score_file() for an evaluation confined to project_root: (result | None, errors, warnings). Never raises on bad input."""
+    try:
+        path = resolve_inside(project_root, eval_path, must_exist=True)
+    except GFError as exc:
+        return None, [str(exc)], []
+    return score_file(path)
 
 
 def run(args):

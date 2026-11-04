@@ -11,11 +11,13 @@ import tempfile
 import threading
 import http.client
 import unittest
+from unittest import mock
 import urllib.request
 from http.server import ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "skill" / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
 MODULE = ROOT / "skill" / "scripts" / "gf_observe.py"
 SPEC = importlib.util.spec_from_file_location("gf_observe", MODULE)
 observe = importlib.util.module_from_spec(SPEC)
@@ -390,6 +392,364 @@ class EventLogTests(unittest.TestCase):
         self.assertEqual(s["events"][0]["event"], "run_completed")
         market = next(a for a in s["agents"] if a["name"] == "gf-market")
         self.assertEqual((market["tools"], market["status"]), (10001, "completed"))
+
+
+HTML = (ROOT / "skill" / "assets" / "mission-control.html").read_text(encoding="utf-8")
+DEMO_EVAL = ROOT / "skill" / "assets" / "demo-research" / "evaluation.json"
+
+
+class ServerMixin:
+    def serve(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), observe.Handler)
+        server.project, server.allow_hosts = self.root, []
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        def stop():
+            server.shutdown(); server.server_close(); thread.join(timeout=3)
+        self.addCleanup(stop)
+        self.port = server.server_port
+
+    def get(self, path, **headers):
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        c.request("GET", path, headers={k.replace("_", "-"): v for k, v in headers.items()})
+        r = c.getresponse()
+        body = r.read()
+        c.close()
+        return r.status, r.getheader("ETag"), json.loads(body) if body else None
+
+
+class ResearchDirTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        (self.root / "research" / "greenfield" / "x").mkdir(parents=True)
+
+    def meta(self, rid):
+        return json.loads(observe.file_paths(self.root, rid)[0].read_text())
+
+    def test_start_link_and_escape(self):
+        rid = observe.new_run(self.root, "a", research_dir=self.root / "research/greenfield/x")
+        self.assertEqual(self.meta(rid)["research_dir"], "research/greenfield/x")
+        with self.assertRaises(observe.GFError):
+            observe.link_research(self.root, rid, "../outside")
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            code = observe.main(["link", "--research-dir", "/etc", "--run", rid, "--project", str(self.root)])
+        self.assertEqual(code, 2)
+        self.assertIn("outside", err.getvalue())
+        self.assertEqual(observe.link_research(self.root, rid, "research"), "research")
+
+    def test_coverage_links_when_unset(self):
+        import gf_runs
+        rid = observe.new_run(self.root, "a")
+        ev = self.root / "research/greenfield/x/evaluation.json"
+        ev.write_text(DEMO_EVAL.read_text())
+        gf_runs.plan(self.root, rid)
+        gf_runs.coverage(self.root, rid, ev)
+        self.assertEqual(self.meta(rid)["research_dir"], "research/greenfield/x")
+
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
+    def test_meta_stays_private(self):
+        rid = observe.new_run(self.root, "a")
+        observe.link_research(self.root, rid, "research/greenfield/x")
+        self.assertEqual(stat.S_IMODE(observe.file_paths(self.root, rid)[0].stat().st_mode), 0o600)
+
+
+class DecisionTests(ServerMixin, unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.folder = self.root / "research/greenfield/x"
+        self.folder.mkdir(parents=True)
+        self.ev = self.folder / "evaluation.json"
+        self.rid = observe.new_run(self.root, "a")
+
+    def link(self, path="research/greenfield/x"):
+        meta_path = observe.file_paths(self.root, self.rid)[0]
+        meta = json.loads(meta_path.read_text())
+        meta["research_dir"] = path
+        meta_path.write_text(json.dumps(meta))
+
+    def view(self):
+        return observe.decision_view(self.root, self.rid)
+
+    def test_decision_endpoint_states(self):
+        self.serve()
+        seen = {}
+        def state():
+            status, _, body = self.get(f"/api/decision?run={self.rid}")
+            self.assertEqual(status, 200)
+            seen[body["state"]] = body
+            return body["state"]
+        self.assertEqual(state(), "no_research_dir")
+        self.link("../outside")
+        self.assertEqual(state(), "invalid_path")
+        self.link()
+        self.assertEqual(state(), "no_evaluation")
+        self.ev.write_text('{"schema_version": "2.0", "pillars": []}')
+        self.assertEqual(state(), "invalid")
+        self.ev.write_text(DEMO_EVAL.read_text())
+        self.assertEqual(state(), "ok")
+        for body in seen.values():
+            self.assertTrue(body["next_step"]["command"], body["state"])
+        self.assertTrue(seen["invalid"]["errors"])
+        self.assertEqual([p["key"] for p in seen["ok"]["pillars"]], list(observe.SPECIALISTS and [r.pillar for r in observe.SPECIALISTS]))
+        self.assertIn("gf_observe.py link --research-dir", seen["no_research_dir"]["next_step"]["command"])
+
+    def test_no_research_dir_suggests_single_folder(self):
+        self.ev.write_text(DEMO_EVAL.read_text())
+        v = self.view()
+        self.assertEqual(v["state"], "no_research_dir")
+        self.assertIn("research/greenfield/x", v["next_step"]["command"])
+
+    def test_decision_matches_scorer_cli(self):
+        self.link()
+        self.ev.write_text(DEMO_EVAL.read_text())
+        p = subprocess.run([sys.executable, str(ROOT / "skill/scripts/score_project.py"), str(self.ev), "--json"], capture_output=True, text=True, timeout=60)
+        cli = json.loads(p.stdout)
+        v = self.view()
+        self.assertEqual((v["verdict"]["decision"], v["scores"]["weighted_quality"], v["scores"]["evidence_average"], v["verdict"]["headline"]),
+                         (cli["decision"], cli["weighted_quality_0_to_100"], cli["evidence_average_0_to_5"], cli["headline"]))
+        self.assertEqual({p["key"]: (p["quality"], p["evidence"]) for p in v["pillars"]},
+                         {k: (cli["quality_scores"][k], cli["evidence_scores"][k]) for k in cli["quality_scores"]})
+
+    def test_decision_mismatch_flagged(self):  # H3 replayed against the dashboard
+        self.link()
+        self.ev.write_text(DEMO_EVAL.read_text())
+        (self.folder / "decision.json").write_text(json.dumps({"decision": "PROCEED_TO_BOUNDED_PILOT", "weighted_quality_0_to_100": 99}))
+        v = self.view()
+        self.assertEqual(v["verdict"]["decision"], "VALIDATE_BEFORE_BUILD")
+        self.assertEqual(v["stored"], {"present": True, "decision": "PROCEED_TO_BOUNDED_PILOT", "matches": False})
+        self.assertIn("Re-run the scorer", v["next_step"]["text"])
+
+    def test_decision_stale_flagged(self):
+        self.link()
+        self.ev.write_text(DEMO_EVAL.read_text())
+        out = self.folder / "decision.json"
+        subprocess.run([sys.executable, str(ROOT / "skill/scripts/score_project.py"), str(self.ev), "--json", "--output", str(out)], capture_output=True, timeout=60, check=True)
+        v = self.view()
+        self.assertEqual((v["stored"]["matches"], v["stale"]), (True, False))
+        os.utime(out, ns=(1, 1))
+        v = self.view()
+        self.assertEqual((v["stored"]["matches"], v["stale"]), (True, True))
+
+    def test_decision_path_escape_rejected(self):
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        (Path(outside.name) / "evaluation.json").write_text("SECRET-CONTENT")
+        (self.root / "link").symlink_to(outside.name)
+        self.folder.joinpath("evaluation.json").symlink_to(Path(outside.name) / "evaluation.json")
+        for path in ("../outside", outside.name, "link", "research/greenfield/x"):
+            self.link(path)
+            v = self.view()
+            self.assertEqual(v["state"], "invalid_path", path)
+            self.assertNotIn("SECRET", json.dumps(v))
+            self.assertEqual(observe.evidence_view(self.root, self.rid, "market")["state"], "invalid_path")
+
+    def test_malformed_evaluation_never_500(self):
+        self.link()
+        self.serve()
+        for blob in (b'{"pillars": {"market": []}}', b"\xff\xfe not utf-8", b" " * (6 * 1024 * 1024), b"[1]"):
+            self.ev.write_bytes(blob)
+            status, _, body = self.get(f"/api/decision?run={self.rid}")
+            self.assertEqual((status, body["state"]), (200, "invalid"), blob[:20])
+
+    def test_fuzz_corpus_through_decision_view(self):
+        import test_fuzz
+        self.link()
+        base = json.loads(DEMO_EVAL.read_text())
+        for name, edits in test_fuzz.CRASHES.items():
+            data = json.loads(json.dumps(base))
+            for path, value in edits:
+                test_fuzz.set_path(data, path, value)
+            self.ev.write_text(json.dumps(data))
+            self.assertIn(self.view()["state"], ("ok", "invalid"), name)
+
+    def test_decision_etag_304(self):
+        self.link()
+        self.ev.write_text(DEMO_EVAL.read_text())
+        self.serve()
+        _, tag, body = self.get(f"/api/decision?run={self.rid}")
+        self.assertEqual(tag, f'"{body["etag"]}"')
+        for _ in range(2):
+            self.assertEqual(self.get(f"/api/decision?run={self.rid}", If_None_Match=tag)[0], 304)
+        st = self.ev.stat()
+        os.utime(self.ev, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+        status, tag2, _ = self.get(f"/api/decision?run={self.rid}", If_None_Match=tag)
+        self.assertEqual(status, 200)
+        self.assertNotEqual(tag, tag2)
+        self.assertEqual(observe.current_state(self.root, self.rid)["decision_etag"], tag2.strip('"'))
+
+    def test_evidence_endpoint_fields_only(self):
+        self.link()
+        data = json.loads(DEMO_EVAL.read_text())
+        data["claims"][3].update(source_url="https://user:pw@example.org/p?token=SECRET", statement="x" * 500)
+        data["verification_report"] = "report.json"
+        self.ev.write_text(json.dumps(data))
+        (self.folder / "report.json").write_text(json.dumps({"claims": [{"claim_id": "C4", "fetch_status": "fetched", "excerpt_check": "found", "text": "PAGE-TEXT"}]}))
+        self.serve()
+        status, _, v = self.get(f"/api/evidence?run={self.rid}&pillar=economics")
+        self.assertEqual(status, 200)
+        self.assertEqual(set(v), {"state", "pillar", "claims", "receipts", "report"})
+        c = v["claims"][0]
+        self.assertEqual(set(c), {"id", "text", "url", "published", "fetch_status", "excerpt_check"})
+        self.assertEqual((c["id"], c["url"], c["excerpt_check"], len(c["text"])), ("C4", "", "found", 160))
+        self.assertNotIn("PAGE-TEXT", json.dumps(v))
+        self.assertNotIn("SECRET", json.dumps(v))
+        self.assertEqual(self.get(f"/api/evidence?run={self.rid}&pillar=../x")[2]["state"], "invalid")
+
+    def test_evidence_path_escape_rejected(self):
+        self.link("../../")
+        self.assertEqual(observe.evidence_view(self.root, self.rid, "economics"), {"state": "invalid_path"})
+
+    def test_demo_reads_bundled_sample(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+            observe.main(["demo", "--project", str(self.root)])
+        demo = out.getvalue().strip()
+        v = observe.decision_view(self.root, demo)
+        self.assertEqual((v["state"], v["demo"], len(v["pillars"])), ("ok", True, 8))
+        with self.assertRaises(observe.GFError):
+            observe.link_research(self.root, demo, "research")
+
+
+class LiveStateTests(ServerMixin, unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.rid = observe.new_run(self.root, "a")
+
+    def test_state_etag_304(self):
+        self.serve()
+        status, tag, body = self.get(f"/api/state?run={self.rid}")
+        self.assertEqual((status, tag), (200, f'"{body["rev"]}"'))
+        self.assertEqual(self.get(f"/api/state?run={self.rid}", If_None_Match=tag)[0], 304)
+        observe.emit(self.root, self.rid, "note")
+        self.assertEqual(self.get(f"/api/state?run={self.rid}", If_None_Match=tag)[0], 200)
+
+    def test_state_since_delta(self):
+        first = observe.emit(self.root, self.rid, "note", summary="one")
+        observe.emit(self.root, self.rid, "note", summary="two")
+        observe.emit(self.root, self.rid, "note", summary="three")
+        s = observe.current_state(self.root, self.rid, since=first["id"])
+        self.assertNotIn("events", s)
+        self.assertEqual(([e["summary"] for e in s["events_delta"]], s["reset"]), (["three", "two"], False))
+        self.assertIn("agents", s)
+
+    def test_state_since_unknown_resets(self):
+        observe.emit(self.root, self.rid, "note")
+        s = observe.current_state(self.root, self.rid, since="0" * 32)
+        self.assertTrue(s["reset"])
+        self.assertEqual(len(s["events_delta"]), 2)
+
+    def test_rev_changes_when_agent_turns_quiet(self):
+        observe.emit(self.root, self.rid, "agent_started", agent="gf-market")
+        rev = observe.current_state(self.root, self.rid)["rev"]
+        self.assertEqual(observe.current_state(self.root, self.rid)["rev"], rev)
+        later = observe.dt.datetime.now(observe.dt.timezone.utc) + observe.dt.timedelta(minutes=6)
+        with mock.patch.object(observe.dt, "datetime", wraps=observe.dt.datetime) as fake:
+            fake.now.return_value = later
+            s = observe.current_state(self.root, self.rid)
+        self.assertEqual(next(a for a in s["agents"] if a["name"] == "gf-market")["display"]["label"], "Quiet")
+        self.assertNotEqual(s["rev"], rev)
+
+    def test_reconcile_matrix(self):
+        rows = [("failed", None, "Failed", "Agent failed: boom"), ("running", "failed", "Failed", "Checkpoint failed"),
+                ("completed", "completed", "Done", "Checkpointed"), ("completed", "queued", "Done", "Not checkpointed"),
+                ("completed", "running", "Done", "Not checkpointed"), ("completed", None, "Done", ""),
+                ("running", "completed", "Running", "boom"), ("quiet", "running", "Quiet", "No activity for 5 min; not a failure"),
+                ("queued", "running", "Claimed", "Claimed in checkpoints, no hook events yet"),
+                ("queued", "completed", "Done", "From checkpoint (reused or hooks off)"), ("queued", "queued", "Queued", ""), ("queued", None, "Queued", "")]
+        for status, task, label, note in rows:
+            d = observe.reconcile({"name": "gf-market", "status": status, "activity": "boom"}, task)
+            self.assertEqual((d["label"], d["note"]), (label, note), (status, task))
+        self.assertTrue(observe.reconcile({"name": "gf-market", "status": "completed", "activity": ""}, "queued")["warn"])
+        self.assertEqual(observe.reconcile({"name": "gf-redteam", "status": "queued", "activity": ""}, None)["note"], "Waits for all 8 specialists")
+
+    def test_hooks_off_detected(self):
+        import gf_runs
+        gf_runs.plan(self.root, self.rid)
+        gf_runs.claim(self.root, self.rid, "gf-market")
+        s = observe.current_state(self.root, self.rid)
+        self.assertTrue(s["hooks_off"])
+        self.assertEqual(next(a for a in s["agents"] if a["name"] == "gf-market")["display"]["label"], "Claimed")
+        self.assertEqual(s["checkpoints"]["attempts"]["gf-market"], 1)
+        observe.hook_event(self.root, "claude", {"hook_event_name": "SubagentStart", "agent_type": "gf-market"})
+        self.assertFalse(observe.current_state(self.root, self.rid)["hooks_off"])
+
+    def test_demo_idea_has_no_prefix(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+            observe.main(["demo", "--project", str(self.root)])
+        s = observe.current_state(self.root, out.getvalue().strip())
+        self.assertNotIn("DEMO", s["meta"]["idea"])
+        self.assertTrue(s["meta"]["demo"])
+        self.assertEqual(s["provider_name"], "")
+        self.assertEqual(observe.current_state(self.root, self.rid)["provider_name"], "Claude Code + Codex")
+
+    def test_run_window_frozen_after_completion(self):
+        self.assertIsNone(observe.current_state(self.root, self.rid)["run_window"]["end"])
+        end = observe.emit(self.root, self.rid, "run_completed")["timestamp"]
+        observe.emit(self.root, self.rid, "note")
+        w = observe.current_state(self.root, self.rid)["run_window"]
+        self.assertEqual(w, {"start": observe.current_state(self.root, self.rid)["meta"]["created_at"], "end": end})
+
+    def test_status_latest_after_10001_events(self):
+        line = json.dumps({"event": "tool_started", "agent": "gf-market", "tool": "WebSearch", "timestamp": observe.now(), "provider": "claude"}) + "\n"
+        with observe.file_paths(self.root, self.rid)[1].open("a") as f:
+            f.write(line * 10001)
+        observe.emit(self.root, self.rid, "run_completed")
+        s = observe.current_state(self.root, self.rid)
+        self.assertEqual((s["status"], s["event_count"]), ("completed", 10003))
+
+    def test_feed_without_tool_completed(self):
+        for _ in range(3):
+            observe.hook_event(self.root, "claude", {"hook_event_name": "PreToolUse", "agent_type": "gf-market", "tool_name": "WebSearch"})
+        observe.hook_event(self.root, "claude", {"hook_event_name": "PostToolUseFailure", "agent_type": "gf-market", "tool_name": "WebSearch"})
+        s = observe.current_state(self.root, self.rid)
+        self.assertEqual((s["stats"]["tool_calls"], s["stats"]["warnings"]), (3, 1))
+        self.assertFalse(any(e["event"] == "tool_completed" for e in s["events"]))
+        self.assertNotIn("completion", HTML.lower().replace("completions", ""))
+
+
+def _lum(hexcolor):
+    rgb = [int(hexcolor[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    r, g, b = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(a, b):
+    hi, lo = sorted((_lum(a), _lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+class DashboardHtmlTests(unittest.TestCase):
+    def tokens(self, selector):
+        import re
+        block = re.search(re.escape(selector) + r"\{([^}]*)\}", HTML).group(1)
+        return dict(re.findall(r"--([\w-]+):(#[0-9a-fA-F]{6})", block))
+
+    def test_contrast_tokens(self):
+        for sel in (":root", ':root[data-theme="dark"]'):
+            t = self.tokens(sel)
+            for fg, bgs in {"fg": ("bg", "surface", "raised"), "muted": ("bg", "surface", "raised"), "accent": ("surface", "accent-bg"),
+                            "good": ("surface", "good-bg"), "warn": ("surface", "warn-bg"), "bad": ("surface", "bad-bg")}.items():
+                for bg in bgs:
+                    self.assertGreaterEqual(contrast(t[fg], t[bg]), 4.5, (sel, fg, bg))
+            for bar in ("q", "e"):
+                self.assertGreaterEqual(contrast(t[bar], t["track"]), 3, (sel, bar))
+        self.assertEqual(self.tokens(':root[data-theme="dark"]'), self.tokens(':root:not([data-theme="light"])'))
+
+    def test_no_hardcoded_plurals(self):
+        import re
+        nouns = r"(sources?|tool calls?|specialists?|events?|attempts?|warnings?|pillars?|tasks?|claims?|excerpts?|tokens?)"
+        self.assertEqual(re.findall(r"\$\{[^}]*\}\s*" + nouns + r"\b", HTML), [])
+        self.assertEqual(re.findall(r"\)\s*\+\s*'\s*" + nouns + r"\b", HTML), [])
+
+    def test_twelve_px_floor_in_css(self):
+        import re
+        sizes = [float(x) for x in re.findall(r"font-size:\s*([\d.]+)px", HTML)]
+        self.assertGreaterEqual(min(sizes), 12)
 
 
 class FakeTTY(io.StringIO):
