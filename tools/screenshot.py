@@ -46,7 +46,7 @@ def capture():
                 page = browser.new_page(viewport={"width": 1440, "height": 900}, color_scheme="light", device_scale_factor=1)
                 page.goto(url)
                 end = time.monotonic() + 15  # poll from Python: the dashboard CSP forbids wait_for_function's eval
-                while not page.evaluate("document.querySelectorAll('#feed .feed-item').length > 0 && document.getElementById('badge').textContent.length > 0"):
+                while not page.evaluate("document.querySelectorAll('#feed .row').length > 0 && document.getElementById('vword').textContent.length > 0"):
                     if time.monotonic() > end:
                         raise SystemExit("dashboard did not render the demo run")
                     time.sleep(0.1)

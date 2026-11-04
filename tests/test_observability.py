@@ -101,7 +101,7 @@ class ObserveTests(unittest.TestCase):
                 self.assertEqual(state["meta"]["run_id"], self.rid)
             with urllib.request.urlopen(root, timeout=2) as resp:
                 html = resp.read().decode()
-                self.assertIn("Agent Mission Control", html)
+                self.assertIn("Mission Control", html)
                 self.assertIn("No agents have started", html)
                 self.assertIn("<html", html)
         finally:
@@ -627,6 +627,8 @@ class DecisionTests(ServerMixin, unittest.TestCase):
         self.assertEqual((v["state"], v["demo"], len(v["pillars"])), ("ok", True, 8))
         with self.assertRaises(observe.GFError):
             observe.link_research(self.root, demo, "research")
+        self.assertEqual([p["key"] for p in v["pillars"] if p["core"]], ["problem", "market", "value", "economics", "distribution"])
+        self.assertEqual(v["next_bet"]["pillar"], "economics")
 
 
 class LiveStateTests(ServerMixin, unittest.TestCase):
@@ -703,6 +705,28 @@ class LiveStateTests(ServerMixin, unittest.TestCase):
         self.assertEqual(s["provider_name"], "")
         self.assertEqual(observe.current_state(self.root, self.rid)["provider_name"], "Claude Code + Codex")
 
+    def test_demo_snapshot_is_mid_run_and_backdated(self):
+        rid = observe.demo_run(self.root)
+        s = observe.current_state(self.root, rid)
+        labels = {a["name"]: a["display"]["label"] for a in s["agents"]}
+        self.assertEqual(sorted(labels.values()).count("Done"), 5)
+        self.assertEqual(labels["gf-redteam"], "Queued")
+        self.assertEqual(s["status"], "running")
+        self.assertEqual(next(a for a in s["agents"] if a["name"] == "gf-competition")["errors"], 1)
+        times = [e["timestamp"] for e in s["events"]]
+        self.assertEqual(times, sorted(times, reverse=True))
+        self.assertLess(times[-1], times[0])  # spread over the backdated minute, not all stamped now
+
+    def test_demo_replay_writes_the_whole_script(self):
+        slept = []
+        rid = observe.demo_run(self.root, replay=True, sleep=slept.append)
+        s = observe.current_state(self.root, rid)
+        self.assertEqual(s["status"], "completed")
+        self.assertEqual(s["event_count"], len(observe.demo_script()) + 1)  # + run_started
+        self.assertTrue(all(d >= 0 for d in slept))
+        self.assertGreater(sum(slept), 90)
+        self.assertEqual(observe.demo_script(), observe.demo_script())  # seeded: every replay is the same
+
     def test_run_window_frozen_after_completion(self):
         self.assertIsNone(observe.current_state(self.root, self.rid)["run_window"]["end"])
         end = observe.emit(self.root, self.rid, "run_completed")["timestamp"]
@@ -752,11 +776,10 @@ class DashboardHtmlTests(unittest.TestCase):
     def test_contrast_tokens(self):
         for sel in (":root", ':root[data-theme="dark"]'):
             t = self.tokens(sel)
-            for fg, bgs in {"fg": ("bg", "surface", "raised"), "muted": ("bg", "surface", "raised"), "accent": ("surface", "accent-bg"),
-                            "good": ("surface", "good-bg"), "warn": ("surface", "warn-bg"), "bad": ("surface", "bad-bg")}.items():
-                for bg in bgs:
+            for fg in ("fg", "fg-2", "fg-3", "run", "ok", "warn", "bad", "demo"):
+                for bg in ("bg", "raised"):
                     self.assertGreaterEqual(contrast(t[fg], t[bg]), 4.5, (sel, fg, bg))
-            for bar in ("q", "e"):
+            for bar in ("fg-2", "ok"):  # filled quality and proof cells
                 self.assertGreaterEqual(contrast(t[bar], t["track"]), 3, (sel, bar))
         self.assertEqual(self.tokens(':root[data-theme="dark"]'), self.tokens(':root:not([data-theme="light"])'))
 
@@ -768,7 +791,7 @@ class DashboardHtmlTests(unittest.TestCase):
 
     def test_twelve_px_floor_in_css(self):
         import re
-        sizes = [float(x) for x in re.findall(r"font-size:\s*([\d.]+)px", HTML)]
+        sizes = [float(x) for x in re.findall(r"font(?:-size)?:[^;}]*?([\d.]+)px", HTML)]
         self.assertGreaterEqual(min(sizes), 12)
 
 

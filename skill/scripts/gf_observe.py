@@ -13,6 +13,7 @@ import http.server
 import ipaddress
 import json
 import os
+import random
 from pathlib import Path
 import re
 import shlex
@@ -188,7 +189,7 @@ def link_research(project, run_id, path):
     return meta["research_dir"]
 
 
-def new_run(project, idea, provider="both", demo=False, replace=False, research_dir=None):
+def new_run(project, idea, provider="both", demo=False, replace=False, research_dir=None, created_at=None):
     run_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:6]
     meta_path, _ = file_paths(project, run_id)
     extra = {"research_dir": DEMO_RESEARCH if demo else research_rel(project, research_dir)} if demo or research_dir else {}
@@ -196,12 +197,12 @@ def new_run(project, idea, provider="both", demo=False, replace=False, research_
         old = running_run(project)
         if old and not demo and not replace:
             raise ActiveRunError(old[0], old[1].get("idea", ""), old[1].get("created_at"))
-        atomic_json(meta_path, {"run_id": run_id, "idea": safe_text(idea, 200), "provider": provider, "created_at": now(), "demo": bool(demo), **extra})
+        atomic_json(meta_path, {"run_id": run_id, "idea": safe_text(idea, 200), "provider": provider, "created_at": created_at or now(), "demo": bool(demo), **extra})
         if old and not demo:
             emit(project, old[0], "warning", summary=f"Superseded by run {run_id}")
         if not (old and demo):  # sample data never displaces a real run
             atomic_json(storage(project) / "active.json", {"run_id": run_id})
-    emit(project, run_id, "run_started", provider=provider, summary="Research run initialized")
+    emit(project, run_id, "run_started", provider=provider, summary="Research run initialized", at=created_at)
     return run_id
 
 
@@ -253,13 +254,14 @@ def scaffold(project, args):
             "next": [f"Claude Code: /greenfield-business-evaluator {args.idea}", f"Codex: {prompt}", "greenfield dashboard"]}
 
 
-def emit(project, run_id, event, *, provider="manual", agent="orchestrator", agent_id="", session_id="", summary="", tool="", url="", tokens=0):
+def emit(project, run_id, event, *, provider="manual", agent="orchestrator", agent_id="", session_id="", summary="", tool="", url="", tokens=0, at=None):
     if event not in VALID_EVENTS:
         raise ValueError("Unsupported event")
     meta_path, path = file_paths(project, run_id)
     if not meta_path.is_file():
         raise ValueError("Run not initialized")
-    item = {"id": uuid4().hex, "timestamp": now(), "run_id": run_id, "event": event, "provider": safe_text(provider, 25), "agent": clean_agent(agent),
+    # at: only the demo backdates its sample events
+    item = {"id": uuid4().hex, "timestamp": at or now(), "run_id": run_id, "event": event, "provider": safe_text(provider, 25), "agent": clean_agent(agent),
             "agent_id": safe_text(agent_id, 80), "session_id": safe_text(session_id, 80), "summary": safe_text(summary, 160),
             "tool": safe_text(tool, 64), "url": safe_url(url), "tokens": max(0, int(tokens or 0))}
     private_dir(path.parent)
@@ -464,7 +466,7 @@ def _decision_state(project, run_id, meta, state, **fields):
 
 
 def _decide(project, run_id, meta, base, folder, ev, dec):
-    from score_project import VERDICTS, gap_text, recompute_decision, summarize_warnings, verdict_gap
+    from score_project import CORE, VERDICTS, gap_text, recompute_decision, summarize_warnings, verdict_gap
     from gf_portfolio import stored_mismatch
     if not ev.is_file():
         return _decision_state(project, run_id, meta, "no_evaluation"), ()
@@ -493,7 +495,8 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
         stale = (_stat(dec) or (0,))[0] < newest
     qs, es, d = result["quality_scores"], result["evidence_scores"], result["decision"]
     exp = next((x for x in data.get("experiments") or [] if isinstance(x, dict)), None) if isinstance(data.get("experiments"), list) else None
-    bet = {"id": safe_text(exp.get("id"), 20), "text": safe_text(exp.get("hypothesis"), 200)} if exp and exp.get("hypothesis") else None
+    bet = {"id": safe_text(exp.get("id"), 20), "text": safe_text(exp.get("hypothesis"), 200),
+           "pillar": exp.get("pillar") if exp.get("pillar") in qs else None} if exp and exp.get("hypothesis") else None
     rq = shlex.quote(str(ASSETS / rd) if meta.get("demo") else rd)
     rescore = f"greenfield score {rq}/evaluation.json --json --output {rq}/decision.json"
     unassessed = [p for p, q in qs.items() if q is None]
@@ -514,7 +517,7 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
             "verdicts": VERDICTS,
             "scores": {"weighted_quality": result["weighted_quality_0_to_100"], "evidence_average": result["evidence_average_0_to_5"],
                        "profile": result["business_model_profile"], "fatal_blockers": len(result["confirmed_fatal_blockers"])},
-            "pillars": [{"key": r.pillar, "name": r.display, "weight": result["pillar_weights"][r.pillar], "quality": qs[r.pillar], "evidence": es[r.pillar]} for r in SPECIALISTS],
+            "pillars": [{"key": r.pillar, "name": r.display, "weight": result["pillar_weights"][r.pillar], "quality": qs[r.pillar], "evidence": es[r.pillar], "core": r.pillar in CORE} for r in SPECIALISTS],
             "attention": {"confirmed_fatal": result["confirmed_fatal_blockers"], "plausible_fatal": result["unresolved_plausible_fatal_blockers"],
                           "missing_pilot_gates": result["missing_pilot_gates"], "source_review_open": result["source_review_pending"],
                           "warnings": [safe_text(w, 200) for w in warnings[:10]], "warning_count": len(result["warnings"])},
@@ -724,17 +727,58 @@ def make_server(project, port, allow_hosts=()):
     return server
 
 
-def demo_run(project):
-    """Create a labelled sample run; it never displaces a real running run."""
-    rid = new_run(project, "Route planning for independent commercial laundries", "demo", True)
+DEMO_URLS = ["https://www.census.gov/", "https://www.bls.gov/", "https://www.sba.gov/", "https://coinlaundry.org/",
+             "https://www.reddit.com/r/laundromat/", "https://www.g2.com/", "https://www.capterra.com/", "https://www.statista.com/"]
+DEMO_SPAN = [38, 44, 48, 45, 46, 70, 66, 64]  # seconds per specialist: five finish before DEMO_CUT, three after
+DEMO_CUT = 60  # the instant demo is a snapshot at this second; --replay plays the whole script
+
+
+def demo_script():
+    """Sample run as (second, event, agent, tool, url, summary), seeded so every demo is the same."""
+    r, out = random.Random(7), [(0.3, "note", "orchestrator", "", "", "DEMO DATA ONLY — no real agents executed")]
     for i, name in enumerate(AGENTS[:-1]):
-        emit(project, rid, "agent_started", agent=name, provider="demo", summary="Sample agent started")
-        emit(project, rid, "tool_started", agent=name, provider="demo", tool="WebSearch", summary="Sample search")
-        if i % 2 == 0:
-            emit(project, rid, "source_seen", agent=name, provider="demo", url="https://www.census.gov/", summary="Sample public source")
-        if i < 5:
-            emit(project, rid, "agent_completed", agent=name, provider="demo", summary="Sample task completed")
-    emit(project, rid, "note", summary="DEMO DATA ONLY — no real agents executed", provider="demo")
+        start = 1 + i * 2.5
+        out.append((start, "agent_started", name, "", "", "Sample agent started"))
+        t, k = start + 1 + r.random() * 2, 0
+        while t < start + DEMO_SPAN[i] - 2:
+            tool = ("WebSearch", "WebFetch", "WebSearch", "Read")[k % 4]
+            out.append((t, "tool_started", name, tool, "", "Sample " + tool))
+            if name == "gf-competition" and k == 3:
+                out.append((t + 0.5, "tool_failed", name, tool, "", "Sample fetch timed out"))
+            elif tool == "WebFetch":
+                out.append((t + 0.7, "source_seen", name, "", r.choice(DEMO_URLS), "Sample public source"))
+            t, k = t + 3 + r.random() * 3, k + 1
+        out.append((start + DEMO_SPAN[i], "agent_completed", name, "", "", "Sample task completed"))
+    red = 2 + max(1 + i * 2.5 + d for i, d in enumerate(DEMO_SPAN))
+    out.append((red, "agent_started", AGENTS[-1], "", "", "Sample agent started"))
+    for k in range(5):
+        tool = ("WebSearch", "WebFetch")[k % 2]
+        out.append((red + 1.5 + k * 2.6, "tool_started", AGENTS[-1], tool, "", "Sample " + tool))
+        if tool == "WebFetch":
+            out.append((red + 2.2 + k * 2.6, "source_seen", AGENTS[-1], "", DEMO_URLS[k], "Sample public source"))
+    out += [(red + 16, "agent_completed", AGENTS[-1], "", "", "Sample task completed"), (red + 17, "run_completed", "orchestrator", "", "", "Sample run finished")]
+    return sorted(out)
+
+
+def demo_run(project, replay=False, sleep=time.sleep):
+    """Create a labelled sample run; it never displaces a real running run.
+
+    Instantly, it is a snapshot DEMO_CUT seconds into the script with backdated timestamps. With replay, the whole
+    script is written in real time (about 100 seconds) so the dashboard can be watched; Ctrl-C leaves a valid run."""
+    idea = "Route planning for independent commercial laundries"
+    script = demo_script()
+    if not replay:
+        base = dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=DEMO_CUT)
+        at = lambda t: (base + dt.timedelta(seconds=t)).isoformat(timespec="milliseconds")
+        rid = new_run(project, idea, "demo", True, created_at=at(0))
+        for t, event, agent, tool, url, summary in (x for x in script if x[0] <= DEMO_CUT):
+            emit(project, rid, event, agent=agent, provider="demo", tool=tool, url=url, summary=summary, at=at(t))
+        return rid
+    rid = new_run(project, idea, "demo", True)
+    t0 = time.monotonic()
+    for t, event, agent, tool, url, summary in script:
+        sleep(max(0.0, t - (time.monotonic() - t0)))
+        emit(project, rid, event, agent=agent, provider="demo", tool=tool, url=url, summary=summary)
     return rid
 
 
@@ -770,6 +814,7 @@ def main(argv=None):
     p.add_argument("--provider", required=True, choices=("claude", "codex"))
     p = add_cli(sub, "ingest-codex", run=True)
     p = add_cli(sub, "demo")
+    p.add_argument("--replay", action="store_true")
     p = add_cli(sub, "status", run=True)
     args = parser.parse_args(argv)
     project = Path(args.project).expanduser().resolve()
@@ -818,7 +863,10 @@ def main(argv=None):
         count = ingest_codex(project, rid, sys.stdin)
         print(f"Captured {count} sanitized Codex events", file=sys.stderr)
     elif args.command == "demo":
-        rid = demo_run(project)
+        try:
+            rid = demo_run(project, args.replay)
+        except KeyboardInterrupt:
+            return 130
         if active_run(project) != rid:
             print("Demo run created but not activated; open it from the run picker", file=sys.stderr)
         print(rid)
