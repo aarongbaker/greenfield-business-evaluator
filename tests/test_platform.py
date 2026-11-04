@@ -96,8 +96,8 @@ class WindowsReadOnlyCommands(unittest.TestCase):
         self.assertEqual(json.loads(windows.stdout), json.loads(linux.stdout))
 
     def test_ledger_verify_runs(self):
-        self.assertEqual(run(["--json", "ledger", "record", "--ledger", "ledger.jsonl", "--kind", "note",
-                              "--project-name", "P", "--hypothesis", "H"], self.p).returncode, 0)
+        # A recorded fixture, not `ledger record`: recording takes a lock, which real Windows refuses.
+        shutil.copy(ROOT / "tests" / "fixtures" / "ledger-note.jsonl", self.p / "ledger.jsonl")
         r = run(["--json", "ledger", "verify", "--ledger", "ledger.jsonl"], self.p, windows=True)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn("Traceback", r.stderr)
