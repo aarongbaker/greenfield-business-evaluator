@@ -106,5 +106,5 @@ jobs:
       - run: python -m pip install playwright && python -m playwright install --with-deps chromium
       - run: mkdir -p shots && GF_REQUIRE_BROWSER=1 GF_SCREENSHOT_DIR=shots python -m unittest tests.test_dashboard_browser -v
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with: {name: mission-control-screenshots, path: shots/}
