@@ -19,8 +19,10 @@ import threading
 import time
 from urllib.parse import urlsplit, urlunsplit, parse_qs
 from uuid import uuid4
+from gf_common import VERSION, atomic_write_json
+from gf_roles import ROLES as _ROLES, normalize
 
-AGENTS = ["gf-problem", "gf-market", "gf-competition", "gf-economics", "gf-value", "gf-distribution", "gf-execution", "gf-timing", "gf-redteam"]
+AGENTS = [r.claude_id for r in _ROLES]
 VALID_EVENTS = {"run_started", "run_completed", "run_failed", "agent_started", "agent_completed", "agent_failed", "tool_started", "tool_completed", "tool_failed", "source_seen", "artifact_created", "note", "token_usage", "warning", "task_planned", "task_started", "task_completed", "task_failed", "run_resumed"}
 VALID_RUN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 EVENT_LIMIT = 10000
@@ -37,8 +39,8 @@ def safe_text(value, limit=150):
 
 
 def clean_agent(name):
-    name = safe_text(name, 90).lower().replace("_", "-")
-    return name if name in AGENTS else "orchestrator"
+    r = normalize(safe_text(name, 90))
+    return r.claude_id if r else "orchestrator"
 
 
 def safe_url(value):
@@ -71,9 +73,7 @@ def storage(project):
 
 def atomic_json(path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp-" + uuid4().hex)
-    tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    atomic_write_json(path, payload)
 
 
 def active_run(project):
@@ -202,6 +202,7 @@ def current_state(project, run_id):
     except (OSError, ValueError, KeyError, TypeError):
         pass
     return {"meta": meta, "status": status, "agents": list(agents.values()), "events": events[-300:][::-1], "event_count": len(events), "checkpoints": task_info,
+            "roles": [{"id": r.claude_id, "name": r.display, "pillar": r.pillar} for r in _ROLES],
             "stats": {"started_agents": len(started), "finished_agents": sum(a["status"] == "completed" for a in agents.values()),
                       "active_agents": sum(a["status"] in ("running", "quiet") for a in agents.values()),
                       "tool_calls": sum(e["event"] == "tool_started" for e in events),
@@ -326,6 +327,7 @@ def add_cli(sub, name, *, project=True, run=False):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Greenfield Mission Control · local metadata observability (not an agent runner)")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     sub = parser.add_subparsers(dest="command", required=True)
     p = add_cli(sub, "start")
     p.add_argument("--idea", required=True)

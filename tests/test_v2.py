@@ -148,6 +148,15 @@ class PortfolioTests(unittest.TestCase):
             self.assertEqual(out['opportunities'][0]['name'],'Good')
             self.assertIsNone(next(v for v in out['opportunities'] if v['name']=='Veto')['rank'])
             self.assertEqual(out['opportunities'][0]['forecast']['base']['contribution_after_fixed_12m'],2000)
+    def test_root_given_through_symlink(self):
+        with tempfile.TemporaryDirectory() as temp:
+            real=Path(temp)/'real';real.mkdir()
+            link=Path(temp)/'link';link.symlink_to(real,target_is_directory=True)
+            good=self.make_item(real,'Good','VALIDATE_BEFORE_BUILD')
+            veto=self.make_item(real,'Veto','NO_GO',100,5)
+            p={'constraints':{'cash_budget_usd':10000,'engineering_weeks':12},'opportunities':[veto,good]}
+            out=gf_portfolio.evaluate_portfolio(p,link)
+            self.assertEqual(out['opportunities'][0]['name'],'Good')
     def test_incomplete_inputs_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);good=self.make_item(root,'Good','VALIDATE_BEFORE_BUILD');good['founder_fit_0_to_5']=None

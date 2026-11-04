@@ -3,3 +3,6 @@ __pycache__/
 .greenfield-observe/
 research/greenfield/
 docs/
+*.pyo
+.DS_Store
+.pytest_cache/

@@ -15,6 +15,8 @@ from pathlib import Path
 import sys
 import uuid
 
+from gf_common import VERSION
+
 ALLOWED = {"hypothesis", "customer_interview", "customer_action", "paid_test", "signed_commitment", "repeat_purchase", "feasibility_proof", "experiment_result", "decision_revision", "failure", "note", "source_review"}
 BEHAVIOR = {"customer_action", "paid_test", "signed_commitment", "repeat_purchase", "feasibility_proof"}
 
@@ -130,6 +132,7 @@ def reviewed_claims(ledger_path, report_path):
 
 def main(argv=None):
     ap=argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('--version',action='version',version=f'%(prog)s {VERSION}')
     sub=ap.add_subparsers(dest='command', required=True)
     p=sub.add_parser('record')
     p.add_argument('--ledger',required=True)

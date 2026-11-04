@@ -21,6 +21,8 @@ from urllib.parse import urljoin, urlsplit
 from urllib.request import build_opener, HTTPRedirectHandler, ProxyHandler, Request
 from urllib.error import HTTPError, URLError
 
+from gf_common import VERSION
+
 MAX_BYTES = 2_000_000
 TIMEOUT = 8
 COMMON = set('a an the and or for to in of on with by from is are at as be has have that this will can than which their its was were'.split())
@@ -152,6 +154,7 @@ def analyze(data, *, allow_network=False, fetcher=None, as_of=None, stale_days=7
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--version',action='version',version=f'%(prog)s {VERSION}')
     p.add_argument('evaluation',type=Path)
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--allow-network',action='store_true',help='Explicitly fetch PUBLIC pages; disabled by default')
