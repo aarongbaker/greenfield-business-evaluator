@@ -1,3 +1,5 @@
+> For agents running the skill. People: read [docs/evidence.md](../../docs/evidence.md) instead.
+
 # v2 operational protocol: evidence, experiments, models, checkpoints, portfolio
 
 `greenfield` on your PATH is a shortcut for the `python3 <skill dir>/scripts/greenfield.py` form used here.
@@ -66,7 +68,7 @@ Profiles alter **heuristic weights and bounded-pilot gates**, not probability fo
 
 ## D. Resumable research, observed live (P1)
 
-Start Mission Control first (see top-level OBSERVABILITY.md), then:
+Start Mission Control first (see `docs/mission-control.md` in the repository), then:
 
 ```bash
 python3 <skill dir>/scripts/greenfield.py task plan --json

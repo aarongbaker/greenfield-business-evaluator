@@ -1,6 +1,6 @@
 {
   "name": "greenfield-business-evaluator",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Evaluate a business idea before building it: parallel research roles, an evidence ledger and a deterministic scorer. Skill and research agents only; no hooks.",
   "author": {
     "name": "aarongbaker"

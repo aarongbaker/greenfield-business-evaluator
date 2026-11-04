@@ -95,7 +95,7 @@ class AttestationTests(unittest.TestCase):
         errors, warnings = scorer.validate(data, self.root)
         self.assertFalse(errors, errors)
         self.assertEqual(scorer.score(data, warnings)["decision"], "VALIDATE_BEFORE_BUILD")
-        self.assertTrue(any("gf_ledger.py reattest" in w for w in warnings), warnings)
+        self.assertTrue(any("ledger reattest" in w for w in warnings), warnings)
 
     def test_cli_record_requires_tty(self):
         proc = subprocess.run([sys.executable, *self.record_args()], env=self.env, capture_output=True, text=True,

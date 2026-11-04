@@ -19,13 +19,16 @@ import re
 import socket
 import ssl
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-from gf_common import VERSION, atomic_write_json, old_entry
+from gf_common import VERSION, atomic_write_json, load_json, old_entry
 
 MAX_BYTES = 2_000_000
 TIMEOUT = 8
+BUDGET = 20  # wall-clock seconds per URL across all redirect hops
+_clock = time.monotonic
 COMMON = set('a an the and or for to in of on with by from is are at as be has have that this will can than which their its was were'.split())
 
 
@@ -99,16 +102,19 @@ def check_public_url(url, resolver=None):
 
 
 def fetch_public(url, resolver=None, connector=None, context=None):
-    current=url; downgraded=False
+    current=url; downgraded=False; deadline=_clock()+BUDGET
     for _ in range(5):
+        left=deadline-_clock()
+        if left<=0:raise RuntimeError(f'Timed out after {BUDGET}s across redirects')
+        tmo=min(TIMEOUT,left)
         host,port,scheme,ips=_vet(current,resolver)
         parts=urlsplit(current)
         hosthdr=f'[{host}]' if ':' in host else host
         if port!=(443 if scheme=='https' else 80):hosthdr+=f':{port}'
         path=(parts.path or '/')+('?'+parts.query if parts.query else '')
         headers={'Host':hosthdr,'User-Agent':'Greenfield-Evidence-Inspector/2.0 (+manual-review-required)','Accept':'text/html,text/plain;q=0.9,application/pdf;q=0.5','Accept-Encoding':'identity','Connection':'close'}
-        conn=(PinnedHTTPSConnection(host,port,ips,connector,context,timeout=TIMEOUT) if scheme=='https'
-              else PinnedHTTPConnection(host,port,ips,connector,timeout=TIMEOUT))
+        conn=(PinnedHTTPSConnection(host,port,ips,connector,context,timeout=tmo) if scheme=='https'
+              else PinnedHTTPConnection(host,port,ips,connector,timeout=tmo))
         try:
             try:
                 conn.request('GET',path,headers=headers); response=conn.getresponse()
@@ -204,7 +210,7 @@ def analyze(data, *, allow_network=False, fetcher=None, as_of=None, stale_days=7
 
 def check(evaluation,output,allow_network=False,stale_days=730):
     """Check the evaluation's sources, write the full report to output, return its summary."""
-    data=json.loads(Path(evaluation).read_text(encoding='utf-8'))
+    data=load_json(evaluation)
     if stale_days<1:raise ValueError('stale-days must be positive')
     report=analyze(data,allow_network=allow_network,as_of=data.get('as_of'),stale_days=stale_days)
     output=Path(output);output.parent.mkdir(mode=0o700,parents=True,exist_ok=True)

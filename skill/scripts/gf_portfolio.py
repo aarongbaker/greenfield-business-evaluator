@@ -76,14 +76,14 @@ def stored_mismatch(decision_path, result):
     try:
         stored = load_json(decision_path)
     except GFError as exc:
-        return None, f'stored decision file is unreadable ({exc}); re-run score_project.py'
+        return None, f'stored decision file is unreadable ({exc}); re-run `greenfield score`'
     said = stored.get('decision')
     if result is None:
         return said, None  # invalid evaluation: reported as such, not as a mismatch
     if said != result['decision'] or not close(stored.get('weighted_quality_0_to_100'), result['weighted_quality_0_to_100'], .05) \
             or not close(stored.get('evidence_average_0_to_5'), result['evidence_average_0_to_5'], .005):
         return said, (f"stored {decision_path.name} says {said} (quality {stored.get('weighted_quality_0_to_100')}) but the evaluation "
-                      f"scores {result['decision']} (quality {result['weighted_quality_0_to_100']}) today; re-run score_project.py")
+                      f"scores {result['decision']} (quality {result['weighted_quality_0_to_100']}) today; re-run `greenfield score`")
     return said, None
 
 
@@ -166,7 +166,7 @@ def to_markdown(result):
 def run(manifest,output,markdown=None):
     """Rank the manifest's opportunities, write output (and markdown), return the one-line summary dict."""
     manifest,output=Path(manifest),Path(output)
-    out=evaluate_portfolio(json.loads(manifest.read_text(encoding='utf-8')),manifest.resolve().parent)
+    out=evaluate_portfolio(load_json(manifest),manifest.resolve().parent)
     output.parent.mkdir(mode=0o700,parents=True,exist_ok=True);atomic_write_json(output,out,mode=0o600)
     if markdown:markdown=Path(markdown);markdown.parent.mkdir(mode=0o700,parents=True,exist_ok=True);atomic_write(markdown,to_markdown(out),mode=0o600)
     return {'ranked':sum(r['rank'] is not None for r in out['opportunities']),'opportunities':len(out['opportunities']),'recommendation':out['recommendation']}

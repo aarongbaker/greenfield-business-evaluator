@@ -364,7 +364,7 @@ class PrivacyTests(unittest.TestCase):
         (self.root / ".git").mkdir()
         with contextlib.redirect_stderr(io.StringIO()) as err:
             observe.main(["start", "--idea", "y", "--project", str(self.root)])
-        self.assertIn("install.py --gitignore", err.getvalue())
+        self.assertIn("greenfield install --gitignore", err.getvalue())
         self.assertFalse((self.root / ".gitignore").exists())
 
 
@@ -474,6 +474,22 @@ class DecisionTests(ServerMixin, unittest.TestCase):
     def view(self):
         return observe.decision_view(self.root, self.rid)
 
+    def test_next_step_commands_reference_existing_paths(self):
+        import shlex
+        demo = observe.new_run(self.root, "demo idea", "demo", demo=True)
+        self.link()
+        views = [observe.decision_view(self.root, demo)]
+        views.append(self.view())  # no_evaluation
+        self.ev.write_text("{}")
+        views.append(self.view())  # invalid
+        self.assertEqual([v["state"] for v in views], ["ok", "no_evaluation", "invalid"])
+        for v in views:
+            for part in v["next_step"]["command"].split(" && "):
+                t = shlex.split(part)
+                src = t[1] if t[0] == "cp" else t[2] if t[:2] == ["greenfield", "score"] else None
+                if src:
+                    self.assertTrue((self.root / src).exists(), (v["state"], part))
+
     def test_decision_endpoint_states(self):
         self.serve()
         seen = {}
@@ -495,7 +511,7 @@ class DecisionTests(ServerMixin, unittest.TestCase):
             self.assertTrue(body["next_step"]["command"], body["state"])
         self.assertTrue(seen["invalid"]["errors"])
         self.assertEqual([p["key"] for p in seen["ok"]["pillars"]], list(observe.SPECIALISTS and [r.pillar for r in observe.SPECIALISTS]))
-        self.assertIn("gf_observe.py link --research-dir", seen["no_research_dir"]["next_step"]["command"])
+        self.assertIn("greenfield link --research-dir", seen["no_research_dir"]["next_step"]["command"])
 
     def test_no_research_dir_suggests_single_folder(self):
         self.ev.write_text(DEMO_EVAL.read_text())
@@ -695,12 +711,16 @@ class LiveStateTests(ServerMixin, unittest.TestCase):
         self.assertEqual(w, {"start": observe.current_state(self.root, self.rid)["meta"]["created_at"], "end": end})
 
     def test_status_latest_after_10001_events(self):
+        observe.emit(self.root, self.rid, "agent_started", provider="claude", agent="gf-market")
         line = json.dumps({"event": "tool_started", "agent": "gf-market", "tool": "WebSearch", "timestamp": observe.now(), "provider": "claude"}) + "\n"
         with observe.file_paths(self.root, self.rid)[1].open("a") as f:
             f.write(line * 10001)
         observe.emit(self.root, self.rid, "run_completed")
         s = observe.current_state(self.root, self.rid)
-        self.assertEqual((s["status"], s["event_count"]), ("completed", 10003))
+        self.assertEqual((s["status"], s["event_count"]), ("completed", 10004))
+        market = next(a for a in s["agents"] if a["name"] == "gf-market")
+        self.assertEqual(market["display"]["label"], "Done")  # a completed run never leaves an agent Running
+        self.assertEqual(observe.reconcile({"status": "running", "activity": "x", "name": "gf-market"}, None, "failed")["label"], "Stopped")
 
     def test_feed_without_tool_completed(self):
         for _ in range(3):

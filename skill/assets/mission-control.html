@@ -144,11 +144,11 @@ body.stale main{opacity:.7}
 </div>
 <div class="main">
 <section class="panel" aria-labelledby="specTitle"><div class="panel-head"><h2 id="specTitle">Research specialists</h2><span id="started" class="small"></span></div><div class="panel-body">
-<p id="hooksOff" class="small" hidden>Live hooks not detected, so statuses come from checkpoints only. Turn them on with <code>configure_hooks.py install</code>.</p>
+<p id="hooksOff" class="small" hidden>Live hooks not detected, so statuses come from checkpoints only. Turn them on with <code>greenfield hooks install</code>.</p>
 <div class="agents" id="agents"><div class="empty">No agents have started.</div></div>
 <div class="axis-row"><span></span><div id="axis" class="axis"></div><span></span></div>
 <h3>Research coverage <span class="small">· sourced claims and excerpts located, not automatic truth verification</span></h3>
-<div id="coverage" class="small">Run gf_runs.py coverage to populate audited claim counts.</div></div></section>
+<div id="coverage" class="small">Run greenfield task coverage --evaluation evaluation.json to populate audited claim counts.</div></div></section>
 <section class="panel" aria-labelledby="feedTitle"><div class="panel-head"><h2 id="feedTitle">Activity stream</h2>
 <div class="chips" role="group" aria-label="Filter events" id="chips"><button type="button" class="chip" data-f="all" aria-pressed="true">All<span class="n"></span></button><button type="button" class="chip" data-f="agents" aria-pressed="false">Agents<span class="n"></span></button><button type="button" class="chip" data-f="tools" aria-pressed="false">Tools<span class="n"></span></button><button type="button" class="chip" data-f="sources" aria-pressed="false">Sources<span class="n"></span></button><button type="button" class="chip" data-f="warn" aria-pressed="false">Warnings<span class="n"></span></button><button type="button" class="chip" id="agentChip" aria-label="Clear agent filter" hidden></button></div></div>
 <p id="trimNote" class="small" style="margin:8px 18px 0" hidden>Showing the latest 300 events</p>
@@ -277,12 +277,12 @@ function patchMetrics(s){
   setText($('tTools'),(st.tool_calls||0).toLocaleString());setText($('tSources'),(st.source_events||0).toLocaleString());
   const cov=Object.values((s.checkpoints&&s.checkpoints.coverage)||{});setText($('tSourcesSub'),cov.length?plural(cov.reduce((n,v)=>n+(v.excerpt_located||0),0),'excerpt')+' located':'');
   const known=st.estimated_cost_usd!=null;setText($('tCost'),known?'$'+Number(st.estimated_cost_usd).toFixed(2):'Not reported');setCls($('tCost'),known?'':'na');
-  setText($('tCostSub'),st.reported_tokens>0?plural(st.reported_tokens,'reported token'):known?'':'Set a rate with gf_runs.py set-rate');
+  setText($('tCostSub'),st.reported_tokens>0?plural(st.reported_tokens,'reported token'):known?'':'Set a rate with greenfield task set-rate --usd-per-million-tokens 5');
   setText($('started'),`Launched: ${st.started_agents} of ${ag.length}`);
 }
 function patchCoverage(s){
   const rows=Object.entries((s.checkpoints&&s.checkpoints.coverage)||{}).map(([p,v])=>`<div class="cov"><span>${esc(store.roles['gf-'+p]||p)}</span><span>${esc(plural(v.sourced_claims,'sourced claim'))} · ${esc(plural(v.excerpt_located,'excerpt'))} located · ${v.quality_assessed?'assessed':'not assessed'}</span></div>`).join('');
-  setHTML($('coverage'),rows||'Run gf_runs.py coverage to populate audited claim counts.');
+  setHTML($('coverage'),rows||'Run greenfield task coverage --evaluation evaluation.json to populate audited claim counts.');
 }
 function resetFeed(){store.seen.clear();store.groups=[];store.byTool={};store.counts={};store.pending=0;$('feed').replaceChildren();paintFeedState()}
 function visible(g){return (store.filter==='all'||g.cats.has(store.filter))&&(!store.agent||g.agent===store.agent)}

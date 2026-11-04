@@ -1,22 +1,17 @@
+> For agents running the skill. People: read [docs/how-scoring-works.md](../../docs/how-scoring-works.md) instead.
+
 # Output contracts
 
 Do not invent artifacts that do not exist. `evaluation.json` is the canonical handoff for deterministic scoring; do not duplicate different scores in different documents. Source IDs, not invented citations, link the artifacts.
 
 ## `DECISION.md` — read this first
 
-```markdown
-# [Idea] — Greenfield investment memo
-As of: [ISO date] | Target: [ICP/geography] | Depth: [...] | Execution: [parallel N actual / sequential fallback] | Web: [live / blocked]
-**Decision:** NO_GO / PIVOT / VALIDATE_BEFORE_BUILD / PROCEED_TO_BOUNDED_PILOT
-**Nature of decision:** [desktop only / first-party data included]; a pilot is not a scaling endorsement.
+The verdict and scorecard are generated, never hand-written. After `score`, run `python3 <skill dir>/scripts/greenfield.py report --json` (add the research folder if there is no active run). It writes a block between `<!-- greenfield:generated v1 ... -->` and `<!-- greenfield:generated end -->` from `decision.json` and `evaluation.json`: title, as-of line with the `decision.json` sha256, verdict callout with the headline, the three headline numbers, the pillar table (weight order) and what would change the verdict. Re-running replaces only that block; it refuses if `decision.json` is stale. Never edit between the markers. Write the narrative below the end marker:
 
+```markdown
 ## In one paragraph
 For [buyer] with [problem], [idea] is [compelling / unclear / weak] because [2-3 evidence-backed points]. The most important unresolved assumption is [...].
-
-## Pillar scorecard
-| Pillar | Quality (0–5) | Evidence (0–5) | Core finding | Claim IDs |
-...
-Quality weighted score: [...] or not available. Evidence average: [...].
+Nature of decision: [desktop only / first-party data included]; a pilot is not a scaling endorsement. State if live research was unavailable and who actually did the analysis.
 
 ## Market opportunity, economics, competition
 3–5 most decision-relevant findings with URLs, dates and caveats.

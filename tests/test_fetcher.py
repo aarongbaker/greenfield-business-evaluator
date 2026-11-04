@@ -80,6 +80,25 @@ class FetcherTests(unittest.TestCase):
                               type('Ctx', (), {'wrap_socket': lambda self, sock, server_hostname: sock})())
         self.assertTrue(out['downgraded_to_http'])
 
+    def test_wall_clock_budget_across_redirects(self):
+        t = [0.0]
+        def clock():  # each hop "takes" 9 s
+            t[0] += 9
+            return t[0]
+        log, seen = [], []
+        inner = serve({'/': redirect('/a'), '/a': redirect('/b'), '/b': page()}, log)
+        def connector(addr, timeout):
+            seen.append(timeout)
+            return inner(addr, timeout)
+        orig, ev._clock = ev._clock, clock
+        try:
+            with self.assertRaisesRegex(RuntimeError, 'Timed out after 20s'):
+                ev.fetch_public('http://example.com/', resolver_for(PUB), connector)
+        finally:
+            ev._clock = orig
+        self.assertEqual(len(seen), 2)  # third hop never connects
+        self.assertTrue(all(x <= ev.TIMEOUT for x in seen))
+
     def test_first_address_down_tries_next(self):
         log = []
         inner = serve({'/': page()}, log)

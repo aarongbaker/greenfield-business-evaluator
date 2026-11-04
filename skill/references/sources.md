@@ -1,3 +1,5 @@
+> For agents running the skill. People: read [docs/evidence.md](../../docs/evidence.md) instead.
+
 # Research and implementation reference URLs (verified 2026-10-23)
 
 Framework sources: useful for methodology, not as proof of demand for a specific startup.

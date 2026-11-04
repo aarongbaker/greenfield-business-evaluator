@@ -64,7 +64,7 @@ class SnapshotTests(unittest.TestCase):
 
     def test_template_snapshot(self):
         text = self.check(TEMPLATE_PATH, "template.txt")
-        self.assertLessEqual(len(text.splitlines()), 27)
+        self.assertLessEqual(len(text.splitlines()), 25)
         self.assertTrue(text.startswith("● RESEARCH INCOMPLETE"))
 
     def test_validate_fixture_snapshot(self):
@@ -95,10 +95,10 @@ class FieldTests(unittest.TestCase):
         data["pillars"]["economics"]["evidence"] = 0
         self.assert_fields(scored(data), "VALIDATE_BEFORE_BUILD",
                            "Evidence is thin on economics and problem: test these before building",
-                           "Record a paid-test result for economics with gf_ledger.py, then re-score.")
+                           "Record a paid-test result for economics with `greenfield ledger record`, then re-score.")
         data["experiments"] = [{"id": "X1", "hypothesis": "Ten HR leads pay $50 for a benchmark"}]
         self.assertEqual(scored(data)["next_step"],
-                         "Run X1 (Ten HR leads pay $50 for a benchmark), record the result with gf_ledger.py, then re-score.")
+                         "Run X1 (Ten HR leads pay $50 for a benchmark), record the result with `greenfield ledger record`, then re-score.")
 
     def test_no_go(self):
         self.assert_fields(scorer.score_file(FIXTURES / "no-go.json")[0], "NO_GO",
@@ -139,7 +139,8 @@ class FieldTests(unittest.TestCase):
     def test_pre_w12_keys_unchanged(self):
         old = json.loads((FIXTURES / "decision-pre-w12.json").read_text())
         new = scorer.score_file(FIXTURES / "validate-before-build.json")[0]
-        self.assertEqual({k: new[k] for k in old}, old)
+        drop = lambda d: {k: ([w for w in v if not w.startswith("Could not validate")] if k == "warnings" else v) for k, v in d.items()}  # message text improved in W7
+        self.assertEqual(drop({k: new[k] for k in old}), drop(old))
 
 
 def apply_gap(data, result):
@@ -165,7 +166,7 @@ def apply_gap(data, result):
             data["verification_report"] = "report.json"
             warnings = [w for w in warnings if not w.startswith(("Unreviewed public source", "Could not validate source"))]
         elif k == "reattest":
-            warnings = [w for w in warnings if "gf_ledger.py reattest" not in w]
+            warnings = [w for w in warnings if "ledger reattest" not in w]
     return data, [w for w in warnings if not w.startswith(("Unmet business-model", "Public citations", "No actual", "No live"))]
 
 

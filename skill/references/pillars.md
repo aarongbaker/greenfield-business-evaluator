@@ -1,3 +1,5 @@
+> For agents running the skill. People: read [docs/how-scoring-works.md](../../docs/how-scoring-works.md) instead.
+
 # Eight pillar playbooks
 
 The eight pillars organize research. Every pillar report must contain a direct answer, a contrary case, an evidence table, and an experiment. The checklist is **not** a license to assert unavailable facts.

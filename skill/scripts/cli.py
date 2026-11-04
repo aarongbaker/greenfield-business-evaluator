@@ -124,7 +124,8 @@ def h_uninstall(args):
         if input("Remove these? [y/N] ").strip().lower() not in ("y", "yes"):
             raise GFError("cancelled, nothing removed", code=1)
     if todo and not args.dry_run:
-        gf_install.apply_uninstall(base, acts, args.platform, args.scope)
+        if gf_install.apply_uninstall(base, acts, args.platform, args.scope):
+            args.exit_code = 1  # some removals failed; each was reported on stderr
     return {"dry_run": args.dry_run, "plan": acts, "note": ".gitignore lines and research/greenfield/ are left in place"}
 
 
@@ -324,7 +325,7 @@ def build_parser():
     p = _cmd(sub, "uninstall", "remove what install placed (edited files, research and other hooks are kept)", [
         "greenfield uninstall --dry-run", "greenfield uninstall --scope user --yes"], h_uninstall)
     p.add_argument("--platform", choices=PLATFORMS, default="both", help="which agent host (default: both)")
-    p.add_argument("--scope", choices=("project", "user"), default="project", help="uninstall from --project or your home folder")
+    p.add_argument("--scope", choices=("project", "user", "all"), default="project", help="uninstall from --project, your home folder, or both")
     p.add_argument("--dry-run", action="store_true", help="show what would be removed and remove nothing")
     p.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     p.add_argument("--keep-hooks", action="store_true", help="leave Mission Control hooks in place")
@@ -466,8 +467,9 @@ def build_parser():
     p.add_argument("--output", type=Path, required=True, help="where to write the ranking JSON")
     p.add_argument("--markdown", type=Path, help="also write a Markdown table here")
 
-    import gf_doctor
+    import gf_doctor, gf_report
     gf_doctor.register(sub, _cmd)
+    gf_report.register(sub, _cmd)
     gf_profiles.register(sub, _cmd)
 
     p = _cmd(sub, "completion", "print a shell completion script", [

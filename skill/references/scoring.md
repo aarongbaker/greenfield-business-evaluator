@@ -1,3 +1,5 @@
+> For agents running the skill. People: read [docs/how-scoring-works.md](../../docs/how-scoring-works.md) instead.
+
 # Decision policy v2.0 — transparent heuristics, not an empirical success predictor
 
 The default `general` weights sum to 100. **Business-specific profiles override these weights**; consult `scripts/gf_profiles.py` and [v2 workflows](v2-workflows.md).

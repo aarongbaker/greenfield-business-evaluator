@@ -111,7 +111,7 @@ def validate(data, base_dir=None):
             warnings.append(f'Receipt {evid}: {why}')
         if not ok and why.startswith(UNCONFIRMED):
             warnings.append(f"Receipt {evid} not confirmed on this machine ({why}); re-confirm with "
-                            f"`gf_ledger.py reattest --ledger {data['evidence_ledger']}` or set GF_ATTEST_KEY_FILE to the signing key")
+                            f"`greenfield ledger reattest --ledger {data['evidence_ledger']}` or set GF_ATTEST_KEY_FILE to the signing key")
             return True  # structurally fine; score() withholds the pilot verdict while this warning stands
         return ok
 
@@ -280,7 +280,9 @@ def validate(data, base_dir=None):
             review_map = reviewed_claims(ledger_path,report_path)
         # Malformed report/ledger FILE contents only; evaluation data is checked outside this try.
         except (ValueError, OSError, TypeError, KeyError, AttributeError) as exc:
-            warnings.append('Could not validate source review ledger/report: '+type(exc).__name__)
+            msg = str(exc).replace(str(base_dir) + os.sep, '') if base_dir else str(exc)  # relative: keeps output machine-independent
+            nxt = f'; next: {exc.hint}' if getattr(exc, 'hint', None) else ''
+            warnings.append(f'Could not validate source review ledger/report: {msg or type(exc).__name__}{nxt}')
         referenced = {cid for item in pillars.values() if isinstance(item,dict) and isinstance(item.get('claim_ids'),list) for cid in item['claim_ids'] if isinstance(cid,str)}
         for claim in claims:
             if isinstance(claim,dict) and claim.get('classification')=='fact' and claim.get('source_url') and member(claim.get('id'),referenced) and review_map.get(claim['id'])!='supported':
@@ -321,7 +323,7 @@ def score(data, warnings):
     missing_gates = [gate for gate in profile['pilot_gates'] if not (isinstance(data.get('pilot_gates',{}).get(gate),dict)
                      and data['pilot_gates'][gate].get('passed') is True
                      and data['pilot_gates'][gate].get('evidence_ids'))]
-    unconfirmed = any('gf_ledger.py reattest' in w for w in warnings)
+    unconfirmed = any('ledger reattest' in w for w in warnings)
     source_risk = bool(data.get('claims') and
                        (not data.get('verification_report') or any('Unreviewed public source claim' in w or 'Could not validate source review ledger/report' in w for w in warnings)))
     if fatal:
@@ -417,7 +419,7 @@ def headline(result, data):
         text = "Pilot gates unmet: " + ", ".join(result["missing_pilot_gates"])
     elif result["source_review_pending"]:
         text = "Public citations need a human source review before a pilot"
-    elif any("gf_ledger.py reattest" in w for w in result["warnings"]):
+    elif any("ledger reattest" in w for w in result["warnings"]):
         text = "Ledger receipts are not confirmed on this machine: re-attest before a pilot"
     else:
         text = f"Weighted quality {result['weighted_quality_0_to_100']}/100 is below the 75 pilot bar"
@@ -440,16 +442,16 @@ def next_step(result, data):
         return "Run a bounded pilot against its pre-committed thresholds; do not scale yet."
     if isinstance(first, dict) and nonempty_str(first.get("hypothesis")):
         return clip(f"Run {first.get('id') or 'the first experiment'} ({first['hypothesis']}), "
-                    "record the result with gf_ledger.py, then re-score.", 200)
+                    "record the result with `greenfield ledger record`, then re-score.", 200)
     if result["unresolved_plausible_fatal_blockers"]:
         return f"Confirm or resolve blocker {result['unresolved_plausible_fatal_blockers'][0]} with sourced evidence, then re-score."
     if result["missing_core_behavior_evidence"]:
         p = min(result["missing_core_behavior_evidence"], key=lambda p: result["evidence_scores"][p])
-        return f"Record a paid-test result for {p} with gf_ledger.py, then re-score."
+        return f"Record a paid-test result for {p} with `greenfield ledger record`, then re-score."
     if result["missing_pilot_gates"]:
         return f"Link reviewed evidence to pilot gate {result['missing_pilot_gates'][0]}, then re-score."
     if result["source_review_pending"]:
-        return "Run gf_evidence.py on the cited sources and record a human source review, then re-score."
+        return "Run `greenfield sources check` on the cited sources and record a human source review, then re-score."
     return "Run the experiment that tests the weakest core pillar, then re-score."
 
 
@@ -479,7 +481,7 @@ def verdict_gap(result):
     if result["source_review_pending"]:
         n = sum(w.startswith("Unreviewed public source claim") for w in result["warnings"])
         out.append({"key": "source_review", "text": f"review {n} source{'s' * (n != 1)}" if n else "verify sources and record a human review"})
-    if any("gf_ledger.py reattest" in w for w in result["warnings"]):
+    if any("ledger reattest" in w for w in result["warnings"]):
         out.append({"key": "reattest", "text": "re-attest ledger receipts on this machine"})
     return out
 
@@ -550,7 +552,7 @@ def render_text(result, *, color, width=80, glyphs="unicode", all_warnings=False
         badge = f"\033[1;{TONES[verdict['tone']]}m{badge}\033[0m"
     total = result["weighted_quality_0_to_100"]
     out = [badge + "   " + title,
-           line(result["headline"]), "",
+           line(result["headline"]),
            line(f"Weighted quality {f'{total:g}/100' if total is not None else g['dash'] + ' / 100 (incomplete)'}   "
                 f"Evidence avg {result['evidence_average_0_to_5']:.1f}/5   "
                 f"Fatal blockers {len(result['confirmed_fatal_blockers'])}"), "",
@@ -560,6 +562,9 @@ def render_text(result, *, color, width=80, glyphs="unicode", all_warnings=False
         out.append(f"{p:<14} {w:>2}  {(bar(q, glyphs) + f' {q}') if q is not None else g['dash'] + ' not assessed':<14}  {bar(e, glyphs)} {e}")
     raw = result["warnings"]
     items = list(raw) if all_warnings else summarize_warnings(raw)
+    gap = verdict_gap(result)
+    if gap and not all_warnings:  # the title already says "not started" and the gap line says "start the evaluation"
+        items = [w for w in items if not w.startswith("Not started:")]
     blockers = result["unresolved_plausible_fatal_blockers"]
     if blockers and not all_warnings:
         items.insert(0, "Plausible fatal blocker unresolved: " + ", ".join(blockers))
@@ -570,7 +575,6 @@ def render_text(result, *, color, width=80, glyphs="unicode", all_warnings=False
         out += [line(f"  {g['item']} {w}") for w in shown]
         if len(items) > len(shown):
             out.append(f"  +{len(items) - len(shown)} more")
-    gap = verdict_gap(result)
     if gap:
         out += textwrap.wrap("To reach Proceed: " + gap_text(gap), width, subsequent_indent="  ")
     out += textwrap.wrap(clip("Next: " + result["next_step"], 400, g["more"]), width, subsequent_indent="      ")
@@ -607,7 +611,7 @@ def run(args):
     if errors:
         for err in errors:
             print("ERROR: " + err, file=sys.stderr)
-        print(f"  next: fix the field(s) above and re-run `score_project.py {args.evaluation}`", file=sys.stderr)
+        print(f"  next: fix the field(s) above and re-run `greenfield score {args.evaluation}`", file=sys.stderr)
         return 2
     body = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
     text = sys.stdout.isatty() and not args.json

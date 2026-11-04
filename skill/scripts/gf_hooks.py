@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Opt-in local observability hooks; preserves unrelated hooks and supports removal.
 
-Run after install.py. Does not modify model permissions, API settings, or global config.
+Run after `greenfield install`. Does not modify model permissions, API settings, or global config.
 """
 import argparse
 import json
 from pathlib import Path
 import shlex
 
-from gf_common import GFError, VERSION, atomic_write_json
+from gf_common import GFError, VERSION, atomic_write_json, load_json
 from gf_roles import hook_matcher
 
 NAME = "greenfield-business-evaluator"
@@ -44,9 +44,7 @@ def transform(path, command, mode, *, platform, guard=None):
     """Install/remove hooks. `command` is the observability hook, `guard` the guard; None leaves that kind alone on install."""
     if platform not in PLATFORM_EVENTS:
         raise ValueError(f"Unknown platform: {platform!r}")
-    old = json.loads(path.read_text()) if path.is_file() else {}
-    if not isinstance(old, dict):
-        raise ValueError(f"Expected object at {path}")
+    old = load_json(path) if path.is_file() else {}
     data = json.loads(json.dumps(old))
     hooks = data.setdefault("hooks", {})
     if not isinstance(hooks, dict):
@@ -106,7 +104,7 @@ def configure(action, project, platform, *, guard=False, observe=True):
     for name in platforms:
         path = path_for(project, name)
         if path.is_file():
-            data = json.loads(path.read_text())
+            data = load_json(path)
             if not isinstance(data, dict) or not isinstance(data.get("hooks", {}), dict):
                 raise GFError(f"Unexpected hooks JSON format: {path}", path=path)
     out = []

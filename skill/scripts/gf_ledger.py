@@ -18,7 +18,7 @@ import secrets
 import sys
 import uuid
 
-from gf_common import old_entry, GFError, VERSION, atomic_write, resolve_inside
+from gf_common import old_entry, GFError, VERSION, atomic_write, load_json, resolve_inside
 from gf_platform import lock_exclusive, require_locking, unlock
 
 ALLOWED = {"hypothesis", "customer_interview", "customer_action", "paid_test", "signed_commitment", "repeat_purchase", "feasibility_proof", "experiment_result", "decision_revision", "failure", "note", "source_review"}
@@ -289,7 +289,7 @@ def reviewed_claims(ledger_path, report_path):
     report = artifact_digest(report_file, base)
     records = read_ledger(ledger_path)
     key = load_key()
-    report_ids = {c.get('claim_id') for c in json.loads(report_file.read_text(encoding='utf-8')).get('claims',[])}
+    report_ids = {c.get('claim_id') for c in load_json(report_file).get('claims',[])}
     out = {}
     for e in records:
         if e['kind'] == 'source_review' and e['human_attested'] and e.get('artifact') and e['claim_id'] in report_ids:

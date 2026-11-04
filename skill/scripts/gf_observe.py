@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import stat
 import sys
 import threading
@@ -111,7 +112,7 @@ def tighten(project):
 
 def git_ignore_hint(project):
     if (Path(project) / ".git").exists() and gitignore_missing(project, (".greenfield-observe/",)):
-        print("hint: .greenfield-observe/ is not in .gitignore; run install.py --gitignore to keep it out of commits", file=sys.stderr)
+        print("hint: .greenfield-observe/ is not in .gitignore; run `greenfield install --gitignore` to keep it out of commits", file=sys.stderr)
 
 
 def active_run(project):
@@ -290,7 +291,7 @@ def parse_events(project, run_id):
     return items
 
 
-def reconcile(agent, task):
+def reconcile(agent, task, run="running"):
     """One shown status from the hook status and the checkpoint status (W20 table): label, tone, note, warn."""
     s = agent["status"]
     d = lambda label, tone, note="", warn=False: {"label": label, "tone": tone, "note": note, "warn": warn}
@@ -298,6 +299,8 @@ def reconcile(agent, task):
         return d("Failed", "bad", f"Agent failed: {agent['activity']}" if s == "failed" else "Checkpoint failed", True)
     if s == "completed":
         return d("Done", "good", *{"completed": ("Checkpointed",), "queued": ("Not checkpointed", True), "running": ("Not checkpointed", True)}.get(task, ()))
+    if s in ("running", "quiet") and run != "running":  # a finished run cannot leave an agent Running
+        return d("Done" if run == "completed" else "Stopped", "good" if run == "completed" else "neutral", f"Run {run}; no agent_completed event")
     if s == "running":
         return d("Running", "accent", agent["activity"])
     if s == "quiet":
@@ -373,7 +376,7 @@ def current_state(project, run_id, since=None):
         pass
     tasks = task_info.get("tasks", {})
     for a in agents.values():
-        a["display"] = reconcile(a, tasks.get(a["name"]))
+        a["display"] = reconcile(a, tasks.get(a["name"]), status)
     hooked = any(e.get("provider") in ("claude", "codex", "codex-cli") and e.get("agent") in agents for e in events)
     ends = [e.get("timestamp") for e in events if e.get("event") in ("run_completed", "run_failed")]
     try:
@@ -445,16 +448,18 @@ def decision_view(project, run_id):
 
 def _decision_state(project, run_id, meta, state, **fields):
     rd = meta.get("research_dir") if isinstance(meta.get("research_dir"), str) else None
+    cd = str(ASSETS / rd) if rd and meta.get("demo") else rd  # the bundled demo folder lives beside the skill, not in the user's project
     if state == "no_research_dir":
         found = sorted(project.glob("research/greenfield/*/evaluation.json"))
         guess = found[0].parent.relative_to(project).as_posix() if len(found) == 1 else "research/greenfield/<slug>"  # suggest, never guess
-        step = {"text": "Link this run to its research folder", "command": f"gf_observe.py link --research-dir {guess} --run {run_id}"}
+        step = {"text": "Link this run to its research folder", "command": f"greenfield link --research-dir {guess} --run {run_id}"}
     elif state == "invalid_path":
-        step = {"text": "The linked folder is outside this project; link one inside it", "command": f"gf_observe.py link --research-dir research/greenfield/<slug> --run {run_id}"}
+        step = {"text": "The linked folder is outside this project; link one inside it", "command": f"greenfield link --research-dir research/greenfield/<slug> --run {run_id}"}
     elif state == "no_evaluation":
-        step = {"text": "Specialists still running, or write evaluation.json from the template", "command": f"cp assets/evaluation-template.json {rd}/evaluation.json"}
+        q = shlex.quote(str(cd))
+        step = {"text": "Specialists still running, or write evaluation.json from the template", "command": f"mkdir -p {q} && cp {shlex.quote(str(ASSETS / 'evaluation-template.json'))} {q}/evaluation.json"}
     else:
-        step = {"text": "Fix the listed errors, then re-run the scorer with --json", "command": f"score_project.py {rd}/evaluation.json --json"}
+        step = {"text": "Fix the listed errors, then re-run the scorer with --json", "command": f"greenfield score {shlex.quote(str(cd))}/evaluation.json --json"}
     return {"state": state, "research_dir": rd, "demo": bool(meta.get("demo")), "next_step": step, "errors": [], **fields}
 
 
@@ -489,7 +494,8 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
     qs, es, d = result["quality_scores"], result["evidence_scores"], result["decision"]
     exp = next((x for x in data.get("experiments") or [] if isinstance(x, dict)), None) if isinstance(data.get("experiments"), list) else None
     bet = {"id": safe_text(exp.get("id"), 20), "text": safe_text(exp.get("hypothesis"), 200)} if exp and exp.get("hypothesis") else None
-    rescore = f"score_project.py {rd}/evaluation.json --json --output {rd}/decision.json"
+    rq = shlex.quote(str(ASSETS / rd) if meta.get("demo") else rd)
+    rescore = f"greenfield score {rq}/evaluation.json --json --output {rq}/decision.json"
     unassessed = [p for p, q in qs.items() if q is None]
     if stale or not stored["matches"]:
         step = "Re-run the scorer to refresh decision.json"
