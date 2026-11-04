@@ -121,7 +121,7 @@ class ConfigureHooksTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'settings.local.json';p.write_text('{"x": 1}\n')
             with mock.patch('os.replace',side_effect=OSError('boom')):
-                with self.assertRaises(OSError):configure_hooks.transform(p,'cmd gf_observe.py hook --project .','install')
+                with self.assertRaises(OSError):configure_hooks.transform(p,'cmd gf_observe.py hook --project .','install',platform='claude')
             self.assertEqual(p.read_text(),'{"x": 1}\n');self.assertEqual(os.listdir(d),['settings.local.json'])
 
 

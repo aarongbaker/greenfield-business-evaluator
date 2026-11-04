@@ -13,6 +13,19 @@ Versioning rules:
 
 ## [Unreleased]
 
+### Security
+
+- Behavior receipts and source reviews need a person at a terminal (`/dev/tty`) typing a one-time code, and are HMAC-signed with a local key at `$XDG_CONFIG_HOME/greenfield/attest.key` (override with `GF_CONFIG_DIR` or `GF_ATTEST_KEY_FILE`). Unsigned or hand-written receipts no longer verify.
+- Every path read from an evaluation, ledger, manifest or task plan must stay inside its folder (no `..`, absolute paths or symlinks out). Run IDs are validated before the task manifest is written.
+
+### Changed
+
+- Ledger receipts store the artifact path relative to the ledger's folder, so a moved or copied evaluation folder still verifies. Legacy absolute paths still verify (inside the folder) with a warning for one release.
+
+### Migration
+
+- Ledgers recorded before signing: receipts show "receipt is unsigned" and evaluations that relied on them drop from `PROCEED_TO_BOUNDED_PILOT` to `VALIDATE_BEFORE_BUILD`. Run `python3 gf_ledger.py reattest --ledger PATH` yourself in a terminal; it walks each unsigned receipt, asks you to confirm it with a code and appends a signed `reattestation` event. Back up the key file printed on first use; receipts verify only where it is.
+
 ### Fixed
 
 - Portfolio ranking accepts a `root` folder given through a symlink (macOS temp folders).

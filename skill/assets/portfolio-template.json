@@ -8,6 +8,7 @@
       "name": "REPLACE_IDEA_NAME",
       "evaluation": "relative/path/evaluation.json",
       "decision": "relative/path/decision.json",
+      "decision_comment": "Optional. Rankings are always recomputed from the evaluation; a stored decision that disagrees leaves the idea unranked.",
       "founder_fit_0_to_5": null,
       "founder_fit_rationale": "REPLACE_WITH_PROOF_OR_RATIONALE",
       "build": {

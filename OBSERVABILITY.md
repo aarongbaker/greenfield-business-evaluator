@@ -24,6 +24,8 @@ Open **http://127.0.0.1:8765** in your own browser. Invoke `$greenfield-business
 
 Restart the coding assistant after setting up hooks. Open `/hooks` in Codex and trust the new hook definitions; Claude may ask you to trust project hooks. If the host disables hooks or uses cloud execution without local hooks, there is no live lifecycle feed. Hook installation does **not** enable browsing or parallel delegation.
 
+The dashboard answers only `127.0.0.1:<port>` and `localhost:<port>` (any other `Host` gets 421). Behind port forwarding or a tunnel that rewrites `Host`, add `serve --allow-host NAME`. Hooks cover `SubagentStart`, `SubagentStop`, `PreToolUse` and, Claude only, `PostToolUseFailure`.
+
 ## Demo before connecting real agents
 
 ```bash

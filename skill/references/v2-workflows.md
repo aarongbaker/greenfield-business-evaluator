@@ -43,6 +43,8 @@ python3 <skill>/scripts/gf_ledger.py verify --ledger experiment-ledger.jsonl
 python3 <skill>/scripts/gf_ledger.py summary --ledger experiment-ledger.jsonl
 ```
 
+Behavior receipts and source reviews must be recorded by a person at a terminal: the command shows a summary and a one-time code to type back, then signs the event with a local key (`~/.config/greenfield/attest.key`, or `$GF_CONFIG_DIR/attest.key`). Agents have no terminal and are refused. Receipt and report paths must sit inside the ledger's folder and are stored relative, so the folder can be moved or shared. Receipts verify only where the key is; a teammate can point `GF_ATTEST_KEY_FILE` at a copy. Ledgers recorded before signing need a one-time `gf_ledger.py reattest --ledger experiment-ledger.jsonl`.
+
 The resulting `EV-...` event ID must be put into a pillar behavior's `ledger_event_id` to qualify for evidence 3+. The behavioral observation must also have `kind`, `description`, `observed_at`, `source_or_artifact`, and `verified: true` in `evaluation.json`. A customer interview without an observed action is normally evidence 1, not 3. Do not place secret receipts or personally identifying interview data in public research folders. Store consent and retention rules separately where necessary.
 
 Log an updated evaluation verdict using `decision_revision` events, referencing earlier decisions and which experiment caused the change. Do not overwrite old decision documents without retaining the prior decision in the ledger.
@@ -78,7 +80,7 @@ No task is automatically launched. The skill orchestrator must actually invoke s
 
 ## E. Portfolio analysis and transparent forecasting (P2)
 
-Prepare a portfolio manifest following `assets/portfolio-template.json`. Reference **actual** `evaluation.json`/`decision.json` outputs within the manifest directory. Supply human founder-fit rationale; estimated build costs/weeks; one measurable next test with a precommitted threshold; estimated test cost, time, expected decision learning (ordinal 0–5); and optional financial scenario inputs.
+Prepare a portfolio manifest following `assets/portfolio-template.json`. Reference **actual** `evaluation.json` files within the manifest directory; the portfolio re-scores each one, and an optional `decision.json` that disagrees leaves that idea unranked. Supply human founder-fit rationale; estimated build costs/weeks; one measurable next test with a precommitted threshold; estimated test cost, time, expected decision learning (ordinal 0–5); and optional financial scenario inputs.
 
 ```bash
 python3 <skill>/scripts/gf_portfolio.py portfolio.json \

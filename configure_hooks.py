@@ -16,6 +16,12 @@ from gf_roles import hook_matcher
 NAME = "greenfield-business-evaluator"
 MARKER = "gf_observe.py"
 REGEX = hook_matcher()
+PLATFORM_EVENTS = {
+    "claude": ("SubagentStart", "SubagentStop", "PreToolUse", "PostToolUseFailure"),
+    "codex": ("SubagentStart", "SubagentStop", "PreToolUse"),
+}
+# Removal also scans events dropped from the table (legacy PostToolUse) and both platforms' sets.
+SCAN_EVENTS = tuple(dict.fromkeys(e for v in PLATFORM_EVENTS.values() for e in v)) + ("PostToolUse",)
 
 
 def path_for(project, platform):
@@ -29,7 +35,9 @@ def script_for(project, platform):
     return base / "scripts" / "gf_observe.py"
 
 
-def transform(path, command, mode):
+def transform(path, command, mode, *, platform):
+    if platform not in PLATFORM_EVENTS:
+        raise ValueError(f"Unknown platform: {platform!r}")
     old = json.loads(path.read_text()) if path.is_file() else {}
     if not isinstance(old, dict):
         raise ValueError(f"Expected object at {path}")
@@ -37,10 +45,7 @@ def transform(path, command, mode):
     hooks = data.setdefault("hooks", {})
     if not isinstance(hooks, dict):
         raise ValueError(f"Expected hooks object at {path}")
-    events = ("SubagentStart", "SubagentStop", "PreToolUse", "PostToolUse", "PostToolUseFailure")
-    if "codex" in str(path):
-        events = events[:-1]
-    for event in events:
+    for event in SCAN_EVENTS:
         groups = hooks.setdefault(event, [])
         if not isinstance(groups, list):
             raise ValueError(f"Expected array for hooks.{event} in {path}")
@@ -58,7 +63,7 @@ def transform(path, command, mode):
                 copy = dict(group)
                 copy["hooks"] = remainder
                 kept.append(copy)
-        if mode == "install":
+        if mode == "install" and event in PLATFORM_EVENTS[platform]:
             if event.startswith("Subagent"):
                 new_group = {"matcher": REGEX, "hooks": [{"type": "command", "command": command, "timeout": 5}]}
             else:
@@ -102,7 +107,7 @@ def main(argv=None):
         script = script_for(project, platform)
         # Absolute script and project paths allow hooks to work from nested cwd.
         cmd = " ".join(("python3", shlex.quote(str(script)), "hook", "--project", shlex.quote(str(project)), "--provider", platform))
-        changed = transform(path_for(project, platform), cmd, args.action)
+        changed = transform(path_for(project, platform), cmd, args.action, platform=platform)
         print(("Updated" if changed else "Already current"), path_for(project, platform))
     if args.action == "install":
         print("Review/trust project hooks in your agent client. These hooks observe metadata only and never block execution.")

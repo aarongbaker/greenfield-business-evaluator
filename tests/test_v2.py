@@ -14,14 +14,14 @@ import gf_profiles as profiles
 import gf_runs
 import gf_observe
 import gf_portfolio
-from test_skill import sample,scorer
+from test_skill import attest,sample,scorer
 
 class LedgerTests(unittest.TestCase):
     def test_behavior_requires_human_and_receipt(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'events.jsonl';receipt=Path(d)/'receipt.txt';receipt.write_text('sample')
-            with self.assertRaises(ValueError):ledger.append(p,'paid_test','X','H',artifact=str(receipt))
-            event=ledger.append(p,'paid_test','X','H',artifact=str(receipt),attester='Test human',pillars=['problem'])
+            with self.assertRaises(ValueError):attest(p,'paid_test','X','H',artifact='receipt.txt')
+            event=attest(p,'paid_test','X','H',artifact='receipt.txt',attester='Test human',pillars=['problem'])
             self.assertTrue(ledger.verified_behavior(p,event['id'],'problem')[0])
             self.assertFalse(ledger.verified_behavior(p,event['id'],'market')[0])
             receipt.write_text('altered')
@@ -37,7 +37,7 @@ class LedgerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);report=root/'report.json';report.write_text('{"status":"retrieved","claims":[{"claim_id":"C1"}]}')
             p=root/'events.jsonl'
-            ledger.append(p,'source_review','X','Claim C1',outcome='supported',artifact=str(report),attester='Human',claim_id='C1')
+            attest(p,'source_review','X','Claim C1',outcome='supported',artifact='report.json',attester='Human',claim_id='C1')
             self.assertEqual(ledger.reviewed_claims(p,report),{'C1':'supported'})
             report.write_text('{"status":"modified"}')
             self.assertEqual(ledger.reviewed_claims(p,report),{})
@@ -74,7 +74,7 @@ class SourceGateTests(unittest.TestCase):
     def test_v2_missing_source_report_blocks_pilot(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);receipt=root/'receipt.txt';receipt.write_text('Synthetic fixture')
-            event=ledger.append(root/'experiment-ledger.jsonl','paid_test','A','H',artifact=receipt,
+            event=attest(root/'experiment-ledger.jsonl','paid_test','A','H',artifact='receipt.txt',
                                 attester='Human test',pillars=list(scorer.CORE))
             data=sample();data['execution']['customer_validation_performed']=True
             data['claims']=[{'id':'C1','pillar':'market','classification':'fact','statement':'Test fact',
@@ -130,36 +130,84 @@ class RunTests(unittest.TestCase):
             self.assertEqual(out['market']['sourced_claims'],1)
             self.assertEqual(out['market']['excerpt_located'],1)
 
+FIXTURES=ROOT/'tests/fixtures'
+BUDGET={'cash_budget_usd':10000,'engineering_weeks':12}
+
+def portfolio_item(root,name,fixture='validate-before-build',decision='honest',edit=None):
+    """Copy a real fixture evaluation into root; decision is 'honest' (what score_project writes), a dict, raw text, or None (no key)."""
+    data=json.loads((FIXTURES/f'{fixture}.json').read_text())
+    if edit:edit(data)
+    e=root/f'{name}.evaluation.json';e.write_text(json.dumps(data))
+    item={'name':name,'evaluation':e.name,'founder_fit_0_to_5':4,'founder_fit_rationale':'Domain experience',
+          'build':{'cash_usd':2500,'engineering_weeks':3},'experiment':{'test':'Sell pilot','decision_threshold':'2 paid buyers',
+          'cash_usd':100,'weeks':1,'expected_learning_0_to_5':4},'forecast':{'base':{'buyers':5,'revenue_per_buyer_12m':1000,
+          'variable_cost_per_buyer_12m':200,'fixed_cost_12m':2000}}}
+    if decision is not None:
+        if decision=='honest':decision=gf_portfolio.score_file(e)[0]
+        d=root/f'{name}.decision.json';d.write_text(decision if isinstance(decision,str) else json.dumps(decision))
+        item['decision']=d.name
+    return item
+
 class PortfolioTests(unittest.TestCase):
-    def make_item(self,root,name,decision,quality=80,ev=3):
-        d=root/f'{name}.decision.json';d.write_text(json.dumps({'decision':decision,'weighted_quality_0_to_100':quality,'evidence_average_0_to_5':ev}))
-        e=root/f'{name}.evaluation.json';e.write_text(json.dumps({'project':{'name':name}}))
-        return {'name':name,'evaluation':e.name,'decision':d.name,'founder_fit_0_to_5':4,'founder_fit_rationale':'Domain experience',
-                'build':{'cash_usd':2500,'engineering_weeks':3},'experiment':{'test':'Sell pilot','decision_threshold':'2 paid buyers',
-                'cash_usd':100,'weeks':1,'expected_learning_0_to_5':4},'forecast':{'base':{'buyers':5,'revenue_per_buyer_12m':1000,
-                'variable_cost_per_buyer_12m':200,'fixed_cost_12m':2000}}}
     def test_ranking_excludes_veto_and_forecast_exact(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)
-            good=self.make_item(root,'Good','VALIDATE_BEFORE_BUILD')
-            veto=self.make_item(root,'Veto','NO_GO',100,5)
-            p={'constraints':{'cash_budget_usd':10000,'engineering_weeks':12},'opportunities':[veto,good]}
-            out=gf_portfolio.evaluate_portfolio(p,root)
+            good=portfolio_item(root,'Good')
+            veto=portfolio_item(root,'Veto','no-go')
+            out=gf_portfolio.evaluate_portfolio({'constraints':BUDGET,'opportunities':[veto,good]},root)
             self.assertEqual(out['opportunities'][0]['name'],'Good')
-            self.assertIsNone(next(v for v in out['opportunities'] if v['name']=='Veto')['rank'])
+            self.assertEqual(out['opportunities'][0]['rank'],1)
+            self.assertEqual(out['opportunities'][0]['decision'],'VALIDATE_BEFORE_BUILD')
+            v=next(v for v in out['opportunities'] if v['name']=='Veto')
+            self.assertIsNone(v['rank']);self.assertEqual(v['decision'],'NO_GO');self.assertFalse(v['decision_mismatch'])
             self.assertEqual(out['opportunities'][0]['forecast']['base']['contribution_after_fixed_12m'],2000)
     def test_root_given_through_symlink(self):
         with tempfile.TemporaryDirectory() as temp:
             real=Path(temp)/'real';real.mkdir()
             link=Path(temp)/'link';link.symlink_to(real,target_is_directory=True)
-            good=self.make_item(real,'Good','VALIDATE_BEFORE_BUILD')
-            veto=self.make_item(real,'Veto','NO_GO',100,5)
-            p={'constraints':{'cash_budget_usd':10000,'engineering_weeks':12},'opportunities':[veto,good]}
-            out=gf_portfolio.evaluate_portfolio(p,link)
+            good=portfolio_item(real,'Good')
+            veto=portfolio_item(real,'Veto','no-go')
+            out=gf_portfolio.evaluate_portfolio({'constraints':BUDGET,'opportunities':[veto,good]},link)
             self.assertEqual(out['opportunities'][0]['name'],'Good')
+            self.assertEqual(out['opportunities'][0]['rank'],1)
     def test_incomplete_inputs_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
-            root=Path(temp);good=self.make_item(root,'Good','VALIDATE_BEFORE_BUILD');good['founder_fit_0_to_5']=None
-            with self.assertRaises(ValueError):gf_portfolio.evaluate_portfolio({'constraints':{'cash_budget_usd':10000,'engineering_weeks':12},'opportunities':[good]},root)
+            root=Path(temp);good=portfolio_item(root,'Good');good['founder_fit_0_to_5']=None
+            with self.assertRaises(ValueError):gf_portfolio.evaluate_portfolio({'constraints':BUDGET,'opportunities':[good]},root)
+    def test_decision_mismatch_unranked(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            honest=gf_portfolio.score_file(root/portfolio_item(root,'Stale',decision=None)['evaluation'])[0]
+            stale={**honest,'weighted_quality_0_to_100':70.0}
+            items=[portfolio_item(root,'Stale',decision=stale),portfolio_item(root,'Garbled',decision='{not json'),
+                   portfolio_item(root,'Listed',decision='[]')]
+            out=gf_portfolio.evaluate_portfolio({'constraints':BUDGET,'opportunities':items},root)
+            for r in out['opportunities']:
+                self.assertIsNone(r['rank'],r['name']);self.assertTrue(r['decision_mismatch'],r['name'])
+                self.assertIn('re-run score_project.py',r['unranked_reason'])
+            r=next(r for r in out['opportunities'] if r['name']=='Stale')
+            self.assertEqual(r['stored_decision'],'VALIDATE_BEFORE_BUILD');self.assertEqual(r['decision'],'VALIDATE_BEFORE_BUILD')
+            self.assertIn('Stale | VALIDATE_BEFORE_BUILD',gf_portfolio.to_markdown(out))
+            self.assertIn('re-run score_project.py |',gf_portfolio.to_markdown(out))
+    def test_ranks_without_decision_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            a=portfolio_item(root,'A',decision=None);b=portfolio_item(root,'B',decision=None)
+            b['evaluation']=a['evaluation']  # two opportunities sharing one evaluation are scored once
+            out=gf_portfolio.evaluate_portfolio({'constraints':BUDGET,'opportunities':[a,b]},root)
+            self.assertEqual([r['rank'] for r in out['opportunities']],[1,2])
+            for r in out['opportunities']:
+                self.assertIsNone(r['stored_decision']);self.assertFalse(r['decision_mismatch'])
+                self.assertEqual(r['quality_0_to_100'],80.0);self.assertEqual(r['business_model'],'general')
+    def test_invalid_evaluation_unranked_with_reason(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            bad=portfolio_item(root,'Bad',decision=None,edit=lambda d:d.update(as_of='soon'))
+            out=gf_portfolio.evaluate_portfolio({'constraints':BUDGET,'opportunities':[bad]},root)
+            r=out['opportunities'][0]
+            self.assertIsNone(r['rank']);self.assertIsNone(r['decision'])
+            self.assertEqual(r['unranked_reason'],'evaluation invalid: 1 error (first: as_of must be an ISO YYYY-MM-DD date)')
+            self.assertEqual(r['validation_errors'],['as_of must be an ISO YYYY-MM-DD date'])
+            self.assertTrue(out['recommendation'].startswith('No eligible build ranking'))
 
 if __name__=='__main__':unittest.main()

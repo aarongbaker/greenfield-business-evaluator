@@ -227,8 +227,6 @@ def hook_event(project, provider, raw):
         emit(project, run_id, "agent_completed", summary="Native subagent returned", **base)
     elif kind == "PreToolUse":
         emit(project, run_id, "tool_started", tool=raw.get("tool_name", "tool"), **base)
-    elif kind == "PostToolUse":
-        emit(project, run_id, "tool_completed", tool=raw.get("tool_name", "tool"), **base)
     elif kind == "PostToolUseFailure":
         emit(project, run_id, "tool_failed", summary="Tool error (details omitted)", tool=raw.get("tool_name", "tool"), **base)
 
@@ -272,8 +270,39 @@ def ingest_codex(project, run_id, source):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "GreenfieldMissionControl/2"
+    def _guard(self, path):
+        """Refuse DNS-rebinding and cross-site reads; True means the request may proceed."""
+        port = self.server.server_address[1]
+        names = {"127.0.0.1", "localhost"} | {h.lower() for h in getattr(self.server, "allow_hosts", ())}
+        hosts = {f"{n}:{port}" for n in names} | (names if port == 80 else set())
+        if (self.headers.get("Host") or "").lower() not in hosts:
+            self._refuse(421, "Misdirected Request")
+            return False
+        if path.startswith("/api/"):
+            origin = self.headers.get("Origin")
+            site = self.headers.get("Sec-Fetch-Site")
+            if (origin is not None and origin.lower() not in {f"http://{h}" for h in hosts}) or (site is not None and site not in ("same-origin", "none")):
+                self._refuse(403, "Forbidden")
+                return False
+        return True
+    def _refuse(self, code, text):
+        body = (text + "\n").encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+    def end_headers(self):
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("Referrer-Policy", "no-referrer")
+        super().end_headers()
+    def do_HEAD(self):
+        self.do_GET()
     def do_GET(self):
         path = urlsplit(self.path)
+        if not self._guard(path.path):
+            return
         if path.path == "/":
             try:
                 html = (Path(__file__).resolve().parent.parent / "assets" / "mission-control.html").read_bytes()
@@ -334,6 +363,7 @@ def main(argv=None):
     p.add_argument("--provider", default="both", choices=("both", "claude", "codex"))
     p = add_cli(sub, "serve")
     p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--allow-host", action="append", default=[], help="extra Host name to accept (port forwarding, tunnels)")
     p = add_cli(sub, "emit", run=True)
     p.add_argument("--event", required=True, choices=sorted(VALID_EVENTS))
     p.add_argument("--agent", default="orchestrator")
@@ -355,6 +385,9 @@ def main(argv=None):
             parser.error("Port must be 1–65535")
         server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
         server.project = project
+        server.allow_hosts = args.allow_host
+        if args.allow_host:
+            print(f"WARNING: also answering Host names {', '.join(args.allow_host)}; only use on networks you trust.", flush=True)
         print(f"Mission Control: http://127.0.0.1:{args.port}  (local machine only)", flush=True)
         try:
             server.serve_forever(poll_interval=0.3)

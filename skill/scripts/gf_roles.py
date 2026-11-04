@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
+RESEARCH_TOOLS = ("WebSearch", "WebFetch", "Read", "Grep", "Glob")  # no shell or write tools
+
 
 @dataclass(frozen=True)
 class Role:
@@ -11,6 +13,7 @@ class Role:
     display: str
     pillar: str | None  # None for the red team
     brief: str
+    tools: tuple[str, ...] = RESEARCH_TOOLS
 
     @property
     def claude_id(self):
