@@ -18,6 +18,12 @@ Versioning rules:
 - `greenfield uninstall --scope all` removes both the project and user installs.
 - `greenfield report` warns on stderr, naming the lines, when it overwrites a hand-edited generated block.
 - `fetch_public` stops after 20 seconds of wall-clock time per URL across all redirects.
+- `greenfield demo --replay` writes the sample run in real time (about 100 seconds) so the dashboard can be watched live.
+
+### Changed
+
+- Mission Control is redesigned as a quiet instrument: the verdict and the live specialists share the first screen. The verdict shows a quality-against-proof map and what is missing to proceed; specialists are timeline lanes with tool, source and error marks; pillars and the log open a details drawer; column headings explain quality and proof on hover; keyboard shortcuts (`?`) cover navigation. The default demo is now a mid-run snapshot.
+- `/api/decision` pillars carry `core`, and `next_bet` carries the `pillar` it tests.
 
 ### Fixed
 
