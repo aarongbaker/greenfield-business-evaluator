@@ -2,10 +2,10 @@
 
 Mission Control is a **local, passive observability prototype**, not an alternate agent runner. It receives actual Claude Code/Codex lifecycle events and displays the statuses and short metadata fields it really observed. It does not create parallel agents, verify citation truth, claim that a task was completed unless a completion event arrived, or calculate fake percentages or spend.
 
-## One-time setup (macOS/Linux; Python 3.10+; no packages)
+## One-time setup (macOS/Linux; Python 3.11+; no packages)
 
 ```bash
-# Run these from the extracted bundle:
+# Run these from the repository root (the folder that contains `install.py`):
 python3 install.py --platform both --scope project --project /path/to/my-repo --force
 python3 configure_hooks.py install --platform both --project /path/to/my-repo
 
@@ -68,7 +68,7 @@ Do not emit `agent_started`/`agent_completed` unless an actual agent started/com
 - CLI usage metrics are populated only when reported by Codex `turn.completed`; no cost is guessed. Claude Code token/cost telemetry is not integrated yet; its native OpenTelemetry export could be added later.
 - A `source_seen` event indicates **a recorded source**, **not verified accuracy**. Source URLs (when manually supplied) have query strings/fragments removed, and local/private-address URLs are rejected.
 - An agent that stops sending activity is marked `quiet` after five minutes, **not failed**. `queued` means a defined role that has **not been observed starting**, not that work is actually scheduled.
-- This prototype stores short labels and sanitized paths; even metadata may reveal business research. Add `.greenfield-observe/` to `.gitignore` if the idea is private. Secure your local machine and repository accordingly. Don't expose port 8765 through a proxy or tunnel.
+- This prototype stores short labels and sanitized paths; even metadata may reveal business research. `install.py` offers to add `.greenfield-observe/` to `.gitignore`, and its files are private (0600) by default. Secure your local machine and repository accordingly. Don't expose port 8765 through a proxy or tunnel.
 - The hook installer modifies only project-local hook configuration after opt-in: `.claude/settings.local.json` and `.codex/hooks.json`. Existing unrelated hooks are preserved. To revert:
 
 ```bash

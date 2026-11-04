@@ -3,8 +3,11 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import os
+import stat
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT=Path(__file__).resolve().parent.parent
 sys.path.insert(0,str(ROOT/'skill/scripts'))
@@ -187,8 +190,8 @@ class PortfolioTests(unittest.TestCase):
                 self.assertIn('re-run score_project.py',r['unranked_reason'])
             r=next(r for r in out['opportunities'] if r['name']=='Stale')
             self.assertEqual(r['stored_decision'],'VALIDATE_BEFORE_BUILD');self.assertEqual(r['decision'],'VALIDATE_BEFORE_BUILD')
-            self.assertIn('Stale | VALIDATE_BEFORE_BUILD',gf_portfolio.to_markdown(out))
-            self.assertIn('re-run score_project.py |',gf_portfolio.to_markdown(out))
+            self.assertIn('Stale | Validate before build',gf_portfolio.to_markdown(out))
+            self.assertIn('Stored decision disagrees with re-score |',gf_portfolio.to_markdown(out))
     def test_ranks_without_decision_file(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)
@@ -209,5 +212,62 @@ class PortfolioTests(unittest.TestCase):
             self.assertEqual(r['unranked_reason'],'evaluation invalid: 1 error (first: as_of must be an ISO YYYY-MM-DD date)')
             self.assertEqual(r['validation_errors'],['as_of must be an ISO YYYY-MM-DD date'])
             self.assertTrue(out['recommendation'].startswith('No eligible build ranking'))
+
+def cells(row):
+    """Split a Markdown table row on unescaped pipes."""
+    import re
+    return re.split(r'(?<!\\)\|',row.strip().strip('|'))
+
+class PortfolioOutputTests(unittest.TestCase):
+    def test_md_cell(self):
+        for raw,want in (('a|b','a\\|b'),('a\\b','a\\\\b'),('a\nb\r\tc','a b  c'),('`x`','\\`x\\`'),('[x](y)','\\[x\\](y)'),
+                         ('<b>','\\<b\\>'),('*_#~','\\*\\_\\#\\~'),(None,'—'),('🚀','🚀'),('a\x1b\x00b','ab'),('plain name','plain name')):
+            self.assertEqual(gf_portfolio.md_cell(raw),want,raw)
+        long=gf_portfolio.md_cell('x'*500);self.assertEqual(len(long),120);self.assertTrue(long.endswith('…'))
+    def test_hostile_name_keeps_table_shape(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);hostile='x | [click](javascript:alert(1)) <img src=x>'
+            item=portfolio_item(root,'h',decision=None);item['name']=hostile;item['experiment']['test']='a\nb | c'
+            md=gf_portfolio.to_markdown(gf_portfolio.evaluate_portfolio({'constraints':BUDGET,'opportunities':[item]},root))
+            rows=[l for l in md.splitlines() if l.startswith('|')]
+            self.assertEqual({len(cells(r)) for r in rows},{7})
+            self.assertNotRegex(md,r'(?<!\\)[<\[]')
+    def test_template_lists_placeholders(self):
+        template=ROOT/'skill/assets/portfolio-template.json'
+        r=subprocess.run([sys.executable,str(ROOT/'skill/scripts/gf_portfolio.py'),str(template),'--output','/dev/null'],capture_output=True,text=True)
+        self.assertEqual(r.returncode,2);self.assertNotIn('Traceback',r.stderr);self.assertNotIn('does not exist',r.stderr)
+        for path in ('opportunities[0].name','opportunities[0].founder_fit_rationale','opportunities[0].experiment.test',
+                     'opportunities[0].experiment.decision_threshold','opportunities[0].evaluation','opportunities[0].founder_fit_0_to_5'):
+            self.assertIn(path,r.stderr)
+        self.assertNotIn('forecast',r.stderr)
+        self.assertEqual(gf_portfolio.find_placeholders({'opportunities':[{'name':'Auto-REPLACE_parts'}]}),[])
+    def test_labels_in_markdown_codes_in_json(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            items=[portfolio_item(root,'V',decision=None),portfolio_item(root,'N','no-go',decision=None),
+                   portfolio_item(root,'R',decision=None,edit=lambda d:d['execution'].update(web_used=False)),
+                   portfolio_item(root,'I',decision=None,edit=lambda d:d.update(as_of='soon'))]
+            out=gf_portfolio.evaluate_portfolio({'constraints':BUDGET,'opportunities':items},root)
+            md=gf_portfolio.to_markdown(out)
+            for code in ('VALIDATE_BEFORE_BUILD','NO_GO','RESEARCH_INCOMPLETE'):
+                self.assertNotIn(code,md);self.assertIn(code,[r['decision'] for r in out['opportunities']])
+            for label in ('Validate before build','No go','Research incomplete',"Can't score"):self.assertIn(label,md)
+            self.assertEqual({r['name']:r['verdict_label'] for r in out['opportunities']}['N'],'No go')
+
+class PrivateOutputTests(unittest.TestCase):
+    def test_outputs_and_ledger_are_private(self):
+        old=os.umask(0o022);self.addCleanup(os.umask,old)
+        mode=lambda p:stat.S_IMODE(os.stat(p).st_mode)
+        with tempfile.TemporaryDirectory() as d:
+            d=Path(d);(d/'e.json').write_text('{}');(d/'m.json').write_text('{}')
+            ledger.append(d/'led'/'x.jsonl','note','P','h')
+            with mock.patch.object(evidence,'analyze',return_value={'summary':{}}):
+                evidence.main([str(d/'e.json'),'--output',str(d/'ev'/'o.json')])
+            with mock.patch.object(gf_portfolio,'evaluate_portfolio',return_value={'opportunities':[],'recommendation':''}),mock.patch.object(gf_portfolio,'to_markdown',return_value='x'):
+                gf_portfolio.main([str(d/'m.json'),'--output',str(d/'po'/'o.json'),'--markdown',str(d/'pm'/'o.md')])
+            sc=d/'sc.json';sc.write_text(json.dumps(sample()))
+            subprocess.run([sys.executable,str(ROOT/'skill/scripts/score_project.py'),str(sc),'--output',str(d/'sd'/'o.json')],capture_output=True)
+            for sub,f in (('led','x.jsonl'),('ev','o.json'),('po','o.json'),('pm','o.md'),('sd','o.json')):
+                self.assertEqual(mode(d/sub/f),0o600,sub);self.assertEqual(mode(d/sub),0o700,sub)
 
 if __name__=='__main__':unittest.main()

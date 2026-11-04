@@ -1,5 +1,8 @@
+import contextlib
 import importlib.util
 import io
+import os
+import stat
 import json
 from pathlib import Path
 import subprocess
@@ -12,6 +15,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "skill" / "scripts"))
 MODULE = ROOT / "skill" / "scripts" / "gf_observe.py"
 SPEC = importlib.util.spec_from_file_location("gf_observe", MODULE)
 observe = importlib.util.module_from_spec(SPEC)
@@ -237,6 +241,160 @@ class HookInstallerTests(unittest.TestCase):
         proc = self.invoke("install")
         self.assertNotEqual(proc.returncode, 0)
         self.assertFalse((self.root / ".claude/settings.local.json").exists())
+
+
+class ActiveRunTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.active = self.root / ".greenfield-observe" / "active.json"
+
+    def cli(self, *argv):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()) as out:
+            code = observe.main([*argv, "--project", str(self.root)] if argv[0] != "hook" else list(argv))
+        return code, out.getvalue().strip(), err.getvalue()
+
+    def test_second_start_refused(self):
+        rid = observe.new_run(self.root, "first")
+        before = self.active.read_bytes()
+        runs = sorted((self.root / ".greenfield-observe" / "runs").iterdir())
+        with self.assertRaises(observe.ActiveRunError) as cm:
+            observe.new_run(self.root, "second")
+        self.assertEqual(cm.exception.run_id, rid)
+        self.assertEqual(self.active.read_bytes(), before)
+        self.assertEqual(sorted((self.root / ".greenfield-observe" / "runs").iterdir()), runs)
+
+    def test_cli_exit_2_and_new(self):
+        self.assertEqual(self.cli("start", "--idea", "a")[0], 0)
+        code, out, err = self.cli("start", "--idea", "b")
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("start --new", err)
+        code, new, _ = self.cli("start", "--idea", "b", "--new")
+        self.assertEqual(code, 0)
+        self.assertEqual(observe.active_run(self.root), new)
+
+    def test_new_supersedes_with_warning(self):
+        old = observe.new_run(self.root, "a")
+        new = observe.new_run(self.root, "b", replace=True)
+        last = observe.parse_events(self.root, old)[-1]
+        self.assertEqual((last["event"], last["summary"]), ("warning", f"Superseded by run {new}"))
+        self.assertEqual(observe.current_state(self.root, old)["status"], "running")
+
+    def test_finished_runs_do_not_block(self):
+        for ev in ("run_completed", "run_failed"):
+            rid = observe.new_run(self.root, "a")
+            observe.emit(self.root, rid, ev)
+            self.assertNotEqual(observe.new_run(self.root, "b", replace=False) , rid)
+            observe.emit(self.root, observe.active_run(self.root), "run_completed")
+
+    def test_stale_pointer_does_not_block(self):
+        self.active.parent.mkdir()
+        self.active.write_text('{"run_id": "ghost-run"}')
+        code, out, err = self.cli("start", "--idea", "a")
+        self.assertEqual(code, 0)
+        self.assertIn("ghost-run", err)
+        self.assertEqual(observe.active_run(self.root), out)
+
+    def test_concurrent_starts_one_wins(self):
+        barrier, results = threading.Barrier(2), []
+        def worker():
+            barrier.wait()
+            try:
+                results.append(observe.new_run(self.root, "x"))
+            except observe.ActiveRunError as e:
+                results.append(e)
+        ts = [threading.Thread(target=worker) for _ in range(2)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        self.assertEqual(sum(isinstance(r, str) for r in results), 1)
+        self.assertEqual(len(list((self.root / ".greenfield-observe" / "runs").iterdir())), 1)
+
+    def test_demo_never_displaces_real_run_or_hooks(self):
+        real = observe.new_run(self.root, "real")
+        before = self.active.read_bytes()
+        code, demo, err = self.cli("demo")
+        self.assertEqual(code, 0)
+        self.assertIn("not activated", err)
+        self.assertEqual(self.active.read_bytes(), before)
+        observe.hook_event(self.root, "claude", {"hook_event_name": "PreToolUse", "agent_type": "gf-market", "tool_name": "WebSearch"})
+        self.assertEqual(sum(e["event"] == "tool_started" and e["provider"] == "claude" for e in observe.parse_events(self.root, real)), 1)
+        self.assertFalse(any(e["provider"] == "claude" for e in observe.parse_events(self.root, demo)))
+
+    def test_demo_activates_when_idle_and_does_not_block_start(self):
+        _, demo, err = self.cli("demo")
+        self.assertEqual(observe.active_run(self.root), demo)
+        self.assertNotIn("not activated", err)
+        self.assertEqual(self.cli("start", "--idea", "real")[0], 0)
+
+
+class PrivacyTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        old = os.umask(0o022)
+        self.addCleanup(os.umask, old)
+
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
+    def test_new_files_private(self):
+        rid = observe.new_run(self.root, "x")
+        observe.emit(self.root, rid, "note")
+        base = self.root / ".greenfield-observe"
+        for p in [base, *base.rglob("*")]:
+            self.assertEqual(stat.S_IMODE(p.stat().st_mode), 0o700 if p.is_dir() else 0o600, p)
+
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
+    def test_start_tightens_loose_tree(self):
+        rid = observe.new_run(self.root, "x")
+        base = self.root / ".greenfield-observe"
+        for p in [base, *base.rglob("*")]:
+            p.chmod(0o755 if p.is_dir() else 0o644)
+        observe.emit(self.root, rid, "run_completed")
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            observe.main(["start", "--idea", "y", "--project", str(self.root)])
+        self.assertIn("Tightened", err.getvalue())
+        for p in [base, *base.rglob("*")]:
+            self.assertEqual(stat.S_IMODE(p.stat().st_mode), 0o700 if p.is_dir() else 0o600, p)
+
+    def test_start_hints_when_not_ignored(self):
+        (self.root / ".git").mkdir()
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            observe.main(["start", "--idea", "y", "--project", str(self.root)])
+        self.assertIn("install.py --gitignore", err.getvalue())
+        self.assertFalse((self.root / ".gitignore").exists())
+
+
+class EventLogTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.rid = observe.new_run(self.root, "long")
+        self.log = observe.file_paths(self.root, self.rid)[1]
+
+    def write(self, lines):
+        with self.log.open("a") as f:
+            f.writelines(lines)
+
+    def ev(self, event, agent="gf-market"):
+        return json.dumps({"event": event, "agent": agent, "timestamp": observe.now(), "provider": "t"}) + "\n"
+
+    def test_newest_events_count_past_10000(self):
+        self.write([self.ev("tool_started")] * 10001 + ["not json\n", "[1]\n", self.ev("agent_completed"), self.ev("run_completed")])
+        s = observe.current_state(self.root, self.rid)
+        self.assertEqual(s["status"], "completed")
+        self.assertEqual(s["event_count"], 10004)  # 10001 + 2 valid + run_started
+        self.assertEqual(len(s["events"]), 300)
+        self.assertEqual(s["events"][0]["event"], "run_completed")
+        market = next(a for a in s["agents"] if a["name"] == "gf-market")
+        self.assertEqual((market["tools"], market["status"]), (10001, "completed"))
+
+
+class FakeTTY(io.StringIO):
+    def isatty(self):
+        return True
 
 
 if __name__ == "__main__":

@@ -156,7 +156,7 @@ def _write(path, fields, key=None):
     """Append one event under an exclusive lock; sign it when key is given."""
     path = Path(path)
     # Exclusive OS-level advisory lock across processes; file remains append only.
-    with path.open('a+', encoding='utf-8') as f:
+    with open(path, 'a+', encoding='utf-8', opener=lambda p, fl: os.open(p, fl, 0o600)) as f:
         fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         try:
             existing = read_ledger(path)
@@ -187,7 +187,7 @@ def append(path, kind, project, hypothesis, outcome='', artifact=None, attester=
     if kind == 'source_review' and (not claim_id or outcome not in ('supported', 'contradicted', 'unclear')):
         raise ValueError('Source review needs claim ID and outcome supported|contradicted|unclear')
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     fields = {'observed_at': observed_at or dt.date.today().isoformat(), 'kind':kind, 'project':project.strip(),
               'hypothesis':hypothesis.strip(), 'outcome':outcome.strip(), 'notes':notes.strip(),
               'attester':attester.strip() if attested else '', 'human_attested': attested,

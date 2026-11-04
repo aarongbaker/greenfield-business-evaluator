@@ -19,7 +19,7 @@ All scripts use the Python standard library only. No API keys, packages, or tele
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - macOS or Linux (the ledger and run controller use `fcntl` file locking)
 - Claude Code or Codex, ideally with web search enabled
 
@@ -168,7 +168,7 @@ python3 $SKILL/scripts/gf_observe.py start --project . --idea "Your idea"
 python3 $SKILL/scripts/gf_observe.py serve --project .
 ```
 
-Telemetry is stored in `.greenfield-observe/` in your repository; add it to `.gitignore` for private ideas. Codex project hooks must be reviewed and trusted via `/hooks`. Run `gf_observe.py demo` for a clearly labeled simulated session. See [OBSERVABILITY.md](OBSERVABILITY.md) for full setup and security notes.
+Telemetry is stored in `.greenfield-observe/` in your repository. `install.py` offers to add it to `.gitignore`, and its files are private (0600) by default. Codex project hooks must be reviewed and trusted via `/hooks`. Run `gf_observe.py demo` for a clearly labeled simulated session. See [OBSERVABILITY.md](OBSERVABILITY.md) for full setup and security notes.
 
 ## Enforcing diligence before new builds
 

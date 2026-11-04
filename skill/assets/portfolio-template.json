@@ -1,21 +1,27 @@
 {
+  "_help": "Replace every REPLACE_ value, template path and null below; gf_portfolio.py lists any still left. Keys starting with _ are ignored.",
   "constraints": {
+    "_help": "Total cash (USD) and engineering weeks you can spend across all opportunities.",
     "cash_budget_usd": 10000,
     "engineering_weeks": 12
   },
   "opportunities": [
     {
+      "_help": "One block per idea. Paths are relative to this file. Names must be unique.",
       "name": "REPLACE_IDEA_NAME",
       "evaluation": "relative/path/evaluation.json",
       "decision": "relative/path/decision.json",
       "decision_comment": "Optional. Rankings are always recomputed from the evaluation; a stored decision that disagrees leaves the idea unranked.",
       "founder_fit_0_to_5": null,
       "founder_fit_rationale": "REPLACE_WITH_PROOF_OR_RATIONALE",
+      "_help_founder_fit": "Founder fit 0 to 5, with proof in founder_fit_rationale.",
       "build": {
+        "_help": "Cash (USD) and engineering weeks to build the first version.",
         "cash_usd": null,
         "engineering_weeks": null
       },
       "experiment": {
+        "_help": "The next falsifiable test: what you will do, the pass/fail line set in advance, its cost, weeks, and expected learning 0 to 5.",
         "test": "REPLACE_WITH_FALSIFIABLE_EXPERIMENT",
         "decision_threshold": "REPLACE_WITH_PRECOMMITTED_PASS_FAIL",
         "cash_usd": null,
@@ -23,6 +29,7 @@
         "expected_learning_0_to_5": null
       },
       "forecast": {
+        "_help": "Optional. Each scenario needs buyers, revenue_per_buyer_12m, variable_cost_per_buyer_12m and fixed_cost_12m; leave null to skip.",
         "low": null,
         "base": null,
         "high": null

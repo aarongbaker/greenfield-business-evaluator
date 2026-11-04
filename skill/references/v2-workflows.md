@@ -1,6 +1,6 @@
 # v2 operational protocol: evidence, experiments, models, checkpoints, portfolio
 
-**Every command is optional to perform only when the host has shell access and the user authorized file changes.** Core research may still proceed if these scripts cannot run, but a machine-backed pilot decision must not be claimed without required evidence. Python 3.10+, macOS/Linux (the append-only ledger and run controller use `fcntl`). No extra packages.
+**Every command is optional to perform only when the host has shell access and the user authorized file changes.** Core research may still proceed if these scripts cannot run, but a machine-backed pilot decision must not be claimed without required evidence. Python 3.11+, macOS/Linux (the append-only ledger and run controller use `fcntl`). No extra packages.
 
 ## A. Source inspection (P0)
 
@@ -11,7 +11,7 @@
 python3 <skill>/scripts/gf_evidence.py evaluation.json --output source-verification.json --allow-network
 ```
 
-Without `--allow-network`, the script only checks publication date/origin metadata. `--allow-network` reads **public HTTP(S) HTML/text only**, with download/time/redirect bounds, no authenticated sessions, and a conservative private-host filter. Do not run it against confidential URLs or internal services. PDFs, JavaScript-only sites, unavailable and paywalled sources require manual review. DNS-rebinding and external websites mean this is not a hardened universal SSRF boundary.
+Without `--allow-network`, the script only checks publication date/origin metadata. `--allow-network` reads **public HTTP(S) HTML/text only**, with download/time/redirect bounds, no authenticated sessions, and a conservative private-host filter; it connects only to the vetted IP on ports 80 and 443, so DNS rebinding cannot redirect it to an internal host. Do not run it against confidential URLs or internal services. PDFs, JavaScript-only sites, unavailable and paywalled sources require manual review. It is still not a hardened universal SSRF boundary: fetched text is untrusted, and text matching is not truth.
 
 3. Treat `excerpt_check=found` as **text retrieval success only**. It is not factual proof or semantic entailment. A human can read the source and record a review against the exact report bytes:
 
@@ -82,6 +82,8 @@ No task is automatically launched. The skill orchestrator must actually invoke s
 
 Prepare a portfolio manifest following `assets/portfolio-template.json`. Reference **actual** `evaluation.json` files within the manifest directory; the portfolio re-scores each one, and an optional `decision.json` that disagrees leaves that idea unranked. Supply human founder-fit rationale; estimated build costs/weeks; one measurable next test with a precommitted threshold; estimated test cost, time, expected decision learning (ordinal 0–5); and optional financial scenario inputs.
 
+Start from `assets/portfolio-template.json`; its `_help` keys say what each block needs, and the script exits 2 listing any placeholder still unfilled.
+
 ```bash
 python3 <skill>/scripts/gf_portfolio.py portfolio.json \
   --output portfolio-ranking.json --markdown PORTFOLIO.md
@@ -92,7 +94,7 @@ Results show a *heuristic priority index* under three sensitivity weighting sets
 ## Reproducible decision command
 
 ```bash
-python3 <skill>/scripts/score_project.py evaluation.json --output decision.json
+python3 <skill>/scripts/score_project.py evaluation.json --json --output decision.json
 ```
 
 For v2, core evidence ≥3 must reference intact real ledger receipts, source-dependent claims must be reviewed before bounded pilot authorization, and model-specific gates must have supported evidence. A passing score is not permission to spend, ship, process personal data or ignore regulation.

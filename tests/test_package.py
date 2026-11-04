@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -78,6 +79,64 @@ class PackageTests(unittest.TestCase):
 
     def test_changelog_has_current_version(self):
         self.assertIn(f"## [{VERSION}]", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
+
+
+class GitignoreTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.proj = pathlib.Path(self.tmp.name)
+        (self.proj / ".git").mkdir()
+        self.gi = self.proj / ".gitignore"
+
+    def run_(self, *extra, tty=None, answer=""):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), unittest.mock.patch("builtins.input", return_value=answer), \
+                unittest.mock.patch.object(sys.stdin, "isatty", return_value=bool(tty)):
+            install.main(["--platform", "claude", "--project", str(self.proj), *extra])
+        return out.getvalue()
+
+    def test_non_tty_prints_only(self):
+        out = self.run_()
+        self.assertFalse(self.gi.exists())
+        self.assertIn(".greenfield-observe/", out)
+
+    def test_flag_twice_one_block(self):
+        self.gi.write_text("node_modules")  # no trailing newline
+        self.run_("--gitignore")
+        self.run_("--gitignore", "--force")
+        text = self.gi.read_text()
+        self.assertEqual(text.count(install.GITIGNORE_MARK), 1)
+        self.assertEqual(text.splitlines()[:2], ["node_modules", install.GITIGNORE_MARK])
+        self.assertIn("research/greenfield/", text)
+
+    def test_tty_yes_and_no(self):
+        self.run_(tty=True, answer="n")
+        self.assertFalse(self.gi.exists())
+        self.run_("--force", tty=True, answer="")
+        self.assertIn(".greenfield-observe/", self.gi.read_text())
+
+    def test_no_gitignore_flag(self):
+        self.run_("--no-gitignore", tty=True)
+        self.assertFalse(self.gi.exists())
+
+    def test_variant_forms_present(self):
+        self.gi.write_text("/.greenfield-observe\nresearch/greenfield\n")
+        self.run_("--gitignore")
+        self.assertEqual(self.gi.read_text(), "/.greenfield-observe\nresearch/greenfield\n")
+
+    def test_no_git_or_user_scope_untouched(self):
+        (self.proj / ".git").rmdir()
+        self.run_("--gitignore")
+        self.assertFalse(self.gi.exists())
+
+    def test_symlinked_gitignore_prints_and_continues(self):
+        target = self.proj / "real"
+        target.write_text("")
+        self.gi.symlink_to(target)
+        out = self.run_("--gitignore")
+        self.assertEqual(target.read_text(), "")
+        self.assertIn("Add these lines", out)
 
 
 if __name__ == "__main__":

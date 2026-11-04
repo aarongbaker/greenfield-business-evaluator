@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Local, read-only Greenfield Mission Control. Python 3.10+, standard library only.
+"""Local, read-only Greenfield Mission Control. Python 3.11+, standard library only.
 
 Only metadata is recorded by default. No prompts, reasoning, raw tool I/O, environment,
 network requests or agent responses are captured. Web server binds to loopback only.
 """
 from __future__ import annotations
 import argparse
+import contextlib
 import datetime as dt
 import hashlib
 import http.server
@@ -14,18 +15,22 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import sys
 import threading
 import time
 from urllib.parse import urlsplit, urlunsplit, parse_qs
 from uuid import uuid4
-from gf_common import VERSION, atomic_write_json
+try:
+    import fcntl
+except ImportError:  # Windows: no lock, W26 gives the clear error
+    fcntl = None
+from gf_common import VERSION, GFError, atomic_write_json, gitignore_missing, report
 from gf_roles import ROLES as _ROLES, normalize
 
 AGENTS = [r.claude_id for r in _ROLES]
 VALID_EVENTS = {"run_started", "run_completed", "run_failed", "agent_started", "agent_completed", "agent_failed", "tool_started", "tool_completed", "tool_failed", "source_seen", "artifact_created", "note", "token_usage", "warning", "task_planned", "task_started", "task_completed", "task_failed", "run_resumed"}
 VALID_RUN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
-EVENT_LIMIT = 10000
 DEFAULT_PATH = ".greenfield-observe"
 
 
@@ -71,9 +76,41 @@ def storage(project):
     return Path(project).expanduser().resolve() / DEFAULT_PATH
 
 
+def private_dir(path):
+    """Create path; folders at or below .greenfield-observe are made 0700 whatever the umask."""
+    for d in reversed([path, *path.parents]):
+        if DEFAULT_PATH in d.parts and not d.exists():
+            d.mkdir(mode=0o700)
+            d.chmod(0o700)
+    path.mkdir(parents=True, exist_ok=True)
+
+
 def atomic_json(path, payload):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(path, payload)
+    private_dir(path.parent)
+    atomic_write_json(path, payload, mode=0o600)
+
+
+def tighten(project):
+    """chmod a loose .greenfield-observe tree (older versions) to 0700/0600; note it once on stderr."""
+    root, changed = storage(project), 0
+    if not root.is_dir():
+        return
+    for p in [root, *root.rglob("*")]:
+        try:
+            st = p.lstat()
+            if stat.S_ISLNK(st.st_mode) or not stat.S_IMODE(st.st_mode) & 0o077:
+                continue
+            p.chmod(0o700 if stat.S_ISDIR(st.st_mode) else 0o600)
+            changed += 1
+        except OSError:
+            pass  # chmod-less filesystems: best effort
+    if changed:
+        print(f"Tightened permissions on {changed} item(s) in {root}", file=sys.stderr)
+
+
+def git_ignore_hint(project):
+    if (Path(project) / ".git").exists() and gitignore_missing(project, (".greenfield-observe/",)):
+        print("hint: .greenfield-observe/ is not in .gitignore; run install.py --gitignore to keep it out of commits", file=sys.stderr)
 
 
 def active_run(project):
@@ -92,11 +129,55 @@ def file_paths(project, run_id):
     return base / "meta.json", base / "events.jsonl"
 
 
-def new_run(project, idea, provider="both", demo=False):
+class ActiveRunError(GFError):
+    def __init__(self, run_id, idea, created_at):
+        try:
+            since = dt.datetime.fromisoformat(created_at).astimezone(dt.timezone.utc).strftime("%H:%M UTC")
+        except (TypeError, ValueError):
+            since = "an earlier time"
+        super().__init__(f"Run {run_id} ({idea!r}) has been active since {since}.", hint="Keep using it, or run `start --new` to replace it.")
+        self.run_id, self.idea, self.created_at = run_id, idea, created_at
+
+
+@contextlib.contextmanager
+def active_lock(project):
+    root = storage(project)
+    private_dir(root)
+    fd = os.open(root / ".active.lock", os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        if fcntl:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)  # closing releases the flock
+
+
+def running_run(project):
+    """(run_id, meta) of the active real run if it is still running, else None. Demo and stale runs never block."""
+    rid = active_run(project)
+    if not rid:
+        return None
+    try:
+        state = current_state(project, rid)
+    except (OSError, ValueError):
+        print(f"note: active run {rid} is missing or unreadable; ignoring it", file=sys.stderr)
+        return None
+    meta = state["meta"]
+    return (rid, meta) if state["status"] == "running" and not meta.get("demo") else None
+
+
+def new_run(project, idea, provider="both", demo=False, replace=False):
     run_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:6]
     meta_path, _ = file_paths(project, run_id)
-    atomic_json(meta_path, {"run_id": run_id, "idea": safe_text(idea, 200), "provider": provider, "created_at": now(), "demo": bool(demo)})
-    atomic_json(storage(project) / "active.json", {"run_id": run_id})
+    with active_lock(project):  # check-then-write must be atomic across processes
+        old = running_run(project)
+        if old and not demo and not replace:
+            raise ActiveRunError(old[0], old[1].get("idea", ""), old[1].get("created_at"))
+        atomic_json(meta_path, {"run_id": run_id, "idea": safe_text(idea, 200), "provider": provider, "created_at": now(), "demo": bool(demo)})
+        if old and not demo:
+            emit(project, old[0], "warning", summary=f"Superseded by run {run_id}")
+        if not (old and demo):  # sample data never displaces a real run
+            atomic_json(storage(project) / "active.json", {"run_id": run_id})
     emit(project, run_id, "run_started", provider=provider, summary="Research run initialized")
     return run_id
 
@@ -110,7 +191,7 @@ def emit(project, run_id, event, *, provider="manual", agent="orchestrator", age
     item = {"id": uuid4().hex, "timestamp": now(), "run_id": run_id, "event": event, "provider": safe_text(provider, 25), "agent": clean_agent(agent),
             "agent_id": safe_text(agent_id, 80), "session_id": safe_text(session_id, 80), "summary": safe_text(summary, 160),
             "tool": safe_text(tool, 64), "url": safe_url(url), "tokens": max(0, int(tokens or 0))}
-    path.parent.mkdir(parents=True, exist_ok=True)
+    private_dir(path.parent)
     # O_APPEND single-line append provides good cross-process safety for small records.
     # The JSON payload stays <4 KB; reader skips a torn trailing line if interrupted.
     blob = (json.dumps(item, ensure_ascii=True, separators=(",", ":")) + "\n").encode()
@@ -124,12 +205,10 @@ def emit(project, run_id, event, *, provider="manual", agent="orchestrator", age
 
 def parse_events(project, run_id):
     _, path = file_paths(project, run_id)
-    items = []
+    items = []  # whole log is read on purpose: status and counts need the newest events
     try:
         with path.open(encoding="utf-8") as f:
             for line in f:
-                if len(items) >= EVENT_LIMIT:
-                    break
                 try:
                     item = json.loads(line)
                     if isinstance(item, dict):
@@ -361,6 +440,7 @@ def main(argv=None):
     p = add_cli(sub, "start")
     p.add_argument("--idea", required=True)
     p.add_argument("--provider", default="both", choices=("both", "claude", "codex"))
+    p.add_argument("--new", action="store_true", help="replace the active run if it is still running")
     p = add_cli(sub, "serve")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--allow-host", action="append", default=[], help="extra Host name to accept (port forwarding, tunnels)")
@@ -379,10 +459,17 @@ def main(argv=None):
     args = parser.parse_args(argv)
     project = Path(args.project).expanduser().resolve()
     if args.command == "start":
-        print(new_run(project, args.idea, args.provider))
+        tighten(project)
+        try:
+            rid = new_run(project, args.idea, args.provider, replace=args.new)
+        except ActiveRunError as e:
+            return report(e, stream=sys.stderr)
+        git_ignore_hint(project)
+        print(rid)
     elif args.command == "serve":
         if args.port < 1 or args.port > 65535:
             parser.error("Port must be 1–65535")
+        tighten(project)
         server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
         server.project = project
         server.allow_hosts = args.allow_host
@@ -422,6 +509,8 @@ def main(argv=None):
             if i < 5:
                 emit(project, rid, "agent_completed", agent=name, provider="demo", summary="Sample task completed")
         emit(project, rid, "note", summary="DEMO DATA ONLY — no real agents executed", provider="demo")
+        if active_run(project) != rid:
+            print("Demo run created but not activated; open it from the run picker", file=sys.stderr)
         print(rid)
     elif args.command == "status":
         rid = args.run or active_run(project)
