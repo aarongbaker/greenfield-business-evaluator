@@ -20,6 +20,7 @@ SCRIPTS = ROOT / 'skill' / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
 import gf_ledger
 import score_project as scorer
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_skill import back_core
 
 ITERATIONS = int(os.environ.get('GF_FUZZ_ITERATIONS', '2000'))
