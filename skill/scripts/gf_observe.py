@@ -168,6 +168,15 @@ def running_run(project):
     return (rid, meta) if state["status"] == "running" and not meta.get("demo") else None
 
 
+def real_run_exists(project, skip=None):
+    for meta in (storage(project) / "runs").glob("*/meta.json"):
+        if meta.parent.name != skip:
+            with contextlib.suppress(OSError, ValueError, AttributeError):
+                if not json.loads(meta.read_text(encoding="utf-8")).get("demo"):
+                    return True
+    return False
+
+
 def research_rel(project, path):
     """research_dir as stored in meta.json: relative to the project root; GFError if it escapes."""
     root = Path(project).expanduser().resolve()
@@ -200,7 +209,7 @@ def new_run(project, idea, provider="both", demo=False, replace=False, research_
         atomic_json(meta_path, {"run_id": run_id, "idea": safe_text(idea, 200), "provider": provider, "created_at": created_at or now(), "demo": bool(demo), **extra})
         if old and not demo:
             emit(project, old[0], "warning", summary=f"Superseded by run {run_id}")
-        if not (old and demo):  # sample data never displaces a real run
+        if not (demo and real_run_exists(project, run_id)):  # sample data never displaces a real run, running or finished
             atomic_json(storage(project) / "active.json", {"run_id": run_id})
     emit(project, run_id, "run_started", provider=provider, summary="Research run initialized", at=created_at)
     return run_id

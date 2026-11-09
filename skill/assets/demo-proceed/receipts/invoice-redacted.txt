@@ -1,0 +1,5 @@
+SAMPLE INVOICE (redacted)
+Client: [REDACTED CLINIC]
+Service: compliance audit
+Amount paid: $2,400
+Status: PAID

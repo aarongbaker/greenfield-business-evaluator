@@ -42,6 +42,7 @@ FIT = {"customer_action", "paid_test", "signed_commitment", "repeat_purchase"}
 RESULTS = ("pass", "mixed", "fail")
 CONSENTS = ("own_data", "customer_terms", "public", "counterparty_signed")
 RESERVED = {"demo-research", "demo-proceed"}
+RESERVED_IDS = {"eval-demo-research", "eval-demo-proceed"}
 TEXT = {".csv", ".tsv", ".txt", ".md", ".json"}
 MAGIC = {".pdf": (b"%PDF",), ".png": (b"\x89PNG",), ".jpg": (b"\xff\xd8\xff",), ".jpeg": (b"\xff\xd8\xff",),
          ".xlsx": (b"PK\x03\x04",), ".docx": (b"PK\x03\x04",)}
@@ -257,6 +258,8 @@ def init(folder, ev):
         raise GFError(f"{folder.name} is reserved for the bundled demo", hint="greenfield start --idea '...'")
     setup_folders(folder)
     data = load_json(ev)
+    if data.get("evaluation_id") in RESERVED_IDS:
+        raise GFError(f"{data['evaluation_id']} belongs to a bundled demo", hint="greenfield start --idea '...'")
     if data.get("evaluation_id"):
         return data
     events = _events(folder)

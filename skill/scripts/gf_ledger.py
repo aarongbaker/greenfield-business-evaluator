@@ -8,6 +8,8 @@ forgery; it is not independent proof of behavior.
 """
 from __future__ import annotations
 import argparse
+import contextlib
+import contextvars
 import datetime as dt
 import hashlib
 import hmac
@@ -31,6 +33,31 @@ NO_TTY = "Attested events need a person at a terminal. Run this command yourself
 # Signed intake fields a re-attestation copies unchanged, so nothing is lost or re-bound on a new machine.
 CARRIED = ('material', 'gate_ids', 'result', 'consent', 'pii', 'row_hashes', 'evaluation_id', 'run_slug', 'idea_sha', 'idea_text', 'claim_digest')
 UNCONFIRMED = ("receipt is unsigned", "signed with a different key", "no attestation key")
+# W52: the bundled worked example is signed with a public DEMO key that verifies only in its own folder, unedited.
+DEMO_DIR = Path(__file__).resolve().parents[1] / 'assets' / 'demo-proceed'
+DEMO_KEY_ID = 'e1536591'
+DEMO_PINNED = {"evaluation.json": "a5ea2d7196c5b00c92d7142c3efb142a821eb9ff86f5d20a81b988070dc0383b",
+               "experiment-ledger.jsonl": "98febf8f033051f53bbd5959b86d74c98a96d76817120720bd1e96343d6420d1"}  # tools/make_demo_proceed.py prints these
+DEMO_KEY_PROBLEM = 'signed with the bundled DEMO key, which counts only in the unedited demo folder'
+_in_demo = contextvars.ContextVar('gf_in_demo', default=False)
+
+
+def pinned_demo(folder):
+    try:
+        return Path(folder).resolve() == DEMO_DIR.resolve() and bool(DEMO_PINNED) and all(
+            hashlib.sha256((DEMO_DIR / f).read_bytes()).hexdigest() == h for f, h in DEMO_PINNED.items())
+    except OSError:
+        return False
+
+
+@contextlib.contextmanager
+def demo_scope(folder):
+    """Inside the pinned demo folder only, the DEMO key is the key; yields whether it applied."""
+    token = _in_demo.set(pinned_demo(folder))
+    try:
+        yield _in_demo.get()
+    finally:
+        _in_demo.reset(token)
 
 
 def canonical(value):
@@ -93,6 +120,8 @@ def key_path():
 
 
 def load_key():
+    if _in_demo.get():
+        return (DEMO_DIR / 'demo-attest.key').read_bytes()
     try:
         return key_path().read_bytes() or None
     except FileNotFoundError:
@@ -123,6 +152,8 @@ def signature_problem(event, key):
     """None when event carries a valid signature under key, else the reason."""
     if not event.get('sig'):
         return 'receipt is unsigned (recorded before v2.1)'
+    if event.get('key_id') == DEMO_KEY_ID and not _in_demo.get():
+        return DEMO_KEY_PROBLEM
     if not key:
         return 'no attestation key on this machine'
     if event.get('key_id') != key_id(key):
@@ -215,6 +246,8 @@ def trusted_artifact(events, event, key):
     problem = signature_problem(event, key)
     if not problem:
         return event['artifact'], None
+    if problem == DEMO_KEY_PROBLEM:  # no reattestation rescues a DEMO-signed event
+        return None, problem
     for r in reversed(events):
         if r['kind'] == 'reattestation' and r.get('reattests') == event['id'] and not signature_problem(r, key) \
                 and r.get('artifact') and r['artifact']['sha256'] == event['artifact']['sha256']:
@@ -272,6 +305,9 @@ def reattest(path, confirm=None, adopt=None):
     out = []
     for i, e in enumerate(events):
         if e['kind'] not in ATTESTED or not e.get('human_attested') or not e.get('artifact'):
+            continue
+        if e.get('key_id') == DEMO_KEY_ID:
+            out.append({'id': e['id'], 'action': 'refused', 'reason': DEMO_KEY_PROBLEM})
             continue
         adopting = not e.get('evaluation_id')
         if adopting:

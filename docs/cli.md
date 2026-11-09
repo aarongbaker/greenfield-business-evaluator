@@ -297,6 +297,7 @@ Create a labelled sample run to try the dashboard.
 
 | Option | What it does |
 | --- | --- |
+| `--proceed` | score the bundled worked example that reaches Proceed (DEMO data; creates no run) |
 | `--new` | create it even while a real run is active (it will not replace it) |
 | `--replay` | write the sample events in real time (about 100 seconds) so the dashboard moves |
 
@@ -304,6 +305,7 @@ Create a labelled sample run to try the dashboard.
 greenfield demo
 greenfield demo --new && greenfield dashboard --open
 greenfield demo --replay
+greenfield demo --proceed
 ```
 
 ## greenfield event

@@ -18,6 +18,7 @@ from gf_profiles import BASE, GATE_HELP, PROFILES
 from gf_common import old_entry, GFError, VERSION, atomic_write, finite_nonneg, load_json, report, resolve_inside
 from gf_ledger import UNCONFIRMED, verified_behavior, reviewed_claims
 import gf_history
+import gf_ledger
 import gf_materials
 
 PILLAR_WEIGHTS = BASE
@@ -834,13 +835,16 @@ def _score_trusted(path, *, allow_injected):
         data = load_json(path)
     except GFError as exc:
         return None, [str(exc)], []
-    errors, warnings = validate(data, path.parent)
-    if errors:
-        return None, errors, warnings
-    if allow_injected and warnings.facts.get('injected'):
-        warnings.facts['injected'] = []
-        warnings[:] = [w for w in warnings if 'confirm_via: injected' not in w]
-    result = score(data, warnings)
+    with gf_ledger.demo_scope(path.parent) as demo:  # W52: only the pinned demo folder counts its script-signed events
+        errors, warnings = validate(data, path.parent)
+        if errors:
+            return None, errors, warnings
+        if (allow_injected or demo) and warnings.facts.get('injected'):
+            warnings.facts['injected'] = []
+            warnings[:] = [w for w in warnings if 'confirm_via: injected' not in w]
+        result = score(data, warnings)
+    if demo:
+        result["demo"] = True
     return result, [], result["warnings"]
 
 

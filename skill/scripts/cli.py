@@ -206,6 +206,12 @@ def h_dashboard(args):
 
 
 def h_demo(args):
+    if args.proceed:  # W52: score the bundled worked example only; no Mission Control run, active.json untouched
+        import gf_ledger, score_project
+        result, errors, _ = score_project.score_file(gf_ledger.DEMO_DIR / "evaluation.json")
+        if errors:
+            raise GFError(errors[0], path=gf_ledger.DEMO_DIR / "evaluation.json", hint="reinstall: the bundled demo was edited")
+        return result
     old = None if args.new else gf_observe.running_run(args.project)
     if old:
         raise gf_observe.ActiveRunError(old[0], old[1].get("idea", ""), old[1].get("created_at"))
@@ -213,6 +219,12 @@ def h_demo(args):
         print("Replaying a sample run for about 100 seconds. Watch it with `greenfield dashboard --open`; Ctrl-C stops.", file=sys.stderr, flush=True)
     rid = gf_observe.demo_run(args.project, args.replay)
     return {"run_id": rid, "activated": gf_observe.active_run(args.project) == rid}
+
+
+def t_demo(data, args):
+    if "decision" not in data:
+        return data["run_id"] + "\n"
+    return "DEMO: bundled worked example, fictional data signed with a public demo key\n" + t_score(data, argparse.Namespace(**{**vars(args), "output": None, "all_warnings": False}))
 
 
 def h_emit(args):
@@ -439,7 +451,8 @@ def build_parser():
     p.add_argument("--open", action="store_true", help="open the dashboard in your browser")
 
     p = _cmd(sub, "demo", "create a labelled sample run to try the dashboard", [
-        "greenfield demo", "greenfield demo --new && greenfield dashboard --open", "greenfield demo --replay"], h_demo, _field("run_id"))
+        "greenfield demo", "greenfield demo --new && greenfield dashboard --open", "greenfield demo --replay", "greenfield demo --proceed"], h_demo, t_demo)
+    p.add_argument("--proceed", action="store_true", help="score the bundled worked example that reaches Proceed (DEMO data; creates no run)")
     p.add_argument("--new", action="store_true", help="create it even while a real run is active (it will not replace it)")
     p.add_argument("--replay", action="store_true", help="write the sample events in real time (about 100 seconds) so the dashboard moves")
 

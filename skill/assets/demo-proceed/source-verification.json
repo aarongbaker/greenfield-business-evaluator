@@ -1,0 +1,28 @@
+{
+  "schema_version": "2.0",
+  "as_of": "2026-11-01",
+  "automated_verification_of_truth": false,
+  "network_used": false,
+  "claims": [
+    {
+      "claim_id": "C1",
+      "source_url": "https://www.ada.org/resources/research/health-policy-institute",
+      "origin": "www.ada.org",
+      "published_date": "2025-01-01",
+      "fetched_at": null,
+      "fetch_status": "not_fetched",
+      "excerpt_check": "not_checked",
+      "overlap_ratio": null,
+      "issues": [],
+      "entry_sig": "8e98faae3a60f7d09d56b90bc2f126fe1bc32ff5754aa00cb63a1208360c7db5"
+    }
+  ],
+  "summary": {
+    "total_sources": 1,
+    "fetched": 0,
+    "missing_quotes": 0,
+    "fetch_failures": 0,
+    "shared_origin_groups": 0
+  },
+  "limitations": "Source text and matching excerpts do not establish claim truth. Screenshots, PDFs, JS pages, paywalls, semantics and behavioral receipts need human review."
+}
