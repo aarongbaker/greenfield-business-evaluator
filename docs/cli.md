@@ -31,6 +31,7 @@ Exit codes: 0 success, 1 a negative result you asked about (for example a broken
 - [`greenfield demo`](#greenfield-demo): create a labelled sample run to try the dashboard
 - [`greenfield event`](#greenfield-event): record run events
 - [`greenfield sources`](#greenfield-sources): check the sources cited in an evaluation
+- [`greenfield evidence`](#greenfield-evidence): bring your own materials: record receipts and link them
 - [`greenfield ledger`](#greenfield-ledger): record and verify the hash-chained experiment ledger
 - [`greenfield score`](#greenfield-score): validate and score an evaluation (text on a terminal, JSON when piped)
 - [`greenfield portfolio`](#greenfield-portfolio): rank several scored ideas against each other
@@ -48,6 +49,7 @@ Install the skill and research roles into Claude Code and/or Codex.
 | `--platform PLATFORM` | which agent host (default: both) (one of: claude, codex, both) |
 | `--scope SCOPE` | install into --project or your home folder (one of: project, user) |
 | `--no-agents` | install the skill only, not the nine research roles |
+| `--no-guard` | skip the hook that stops agents recording human attestations |
 | `--force` | replace files this tool installed before |
 | `--gitignore` | add private research folders to .gitignore without asking |
 | `--no-gitignore` | never offer to edit .gitignore |
@@ -351,10 +353,159 @@ Check citations offline (or fetch public pages with --allow-network).
 | `--output OUTPUT` | where to write the full report (default: source-verification.json beside the run's evaluation) |
 | `--allow-network` | fetch PUBLIC pages; off by default |
 | `--stale-days STALE_DAYS` | sources older than this are flagged (default 730) |
+| `--force` | re-check even when that voids existing source reviews |
 
 ```text
 greenfield sources check evaluation.json --output source-verification.json
 greenfield sources check evaluation.json --output out.json --allow-network
+```
+
+## greenfield evidence
+
+Bring your own materials: record receipts and link them.
+
+```text
+greenfield evidence types
+greenfield evidence status
+```
+
+## greenfield evidence add
+
+Record one file as a human-attested receipt.
+
+| Option | What it does |
+| --- | --- |
+| `file` | the file to record |
+| `--as AS_TYPE` | what the file is (see `greenfield evidence types`) (one of: analytics, channel, invoice, loi, memo, model, ops-record, presale, prototype, repeat, signups, supplier-loi, interviews, survey, competitor-research) |
+| `--attester ATTESTER` | the person confirming this receipt |
+| `--consent CONSENT` | why you may keep this data (one of: own_data, customer_terms, public, counterparty_signed) |
+| `--result RESULT` | the outcome against the experiment's threshold (one of: pass, mixed, fail) |
+| `--kind KIND` | override the kind the type implies; the type's ceiling still applies (one of: customer_action, feasibility_proof, paid_test, repeat_purchase, signed_commitment) |
+| `--pillar PILLAR` | pillar this backs (repeatable) (one of: competition, distribution, economics, execution, market, problem, timing, value) |
+| `--gate GATE` | pilot gate this closes (one of: compliance_path, credible_growth_channel, data_and_safety, delivery_capacity, delivery_margin, demand_commitments, funding_runway, jurisdiction_review, liquidity_model, owner_dependence, paid_engagement, pricing_test, professional_review, repeatable_channel, supply_commitments, transaction_margin, venture_scale_market) |
+| `--experiment EXPERIMENT` | experiment id; required for a core pillar |
+| `--hypothesis HYPOTHESIS` | default: the experiment's |
+| `--outcome OUTCOME` | what happened, with no customer data |
+| `--observed OBSERVED` | date observed, YYYY-MM-DD (default today) |
+| `--keep-pii REASON` | keep personal data in this receipt, for this reason |
+| `--redacted` | you redacted this binary file by hand |
+| `--replaces EV-ID` | retire an earlier receipt with the same kind, pillars and result |
+| `--evaluation EVALUATION` | evaluation.json (default: the active run's) |
+| `--run ID` | run id (default: the active run) |
+
+```text
+greenfield evidence add stripe.redacted.csv --as presale --pillar value --pillar economics --experiment EXP-2 --result pass --consent customer_terms --attester 'Ana Ruiz'
+```
+
+## greenfield evidence link
+
+Connect a recorded receipt or reviewed claim (agent-safe).
+
+| Option | What it does |
+| --- | --- |
+| `id` | EV- id or claim id |
+| `--pillar PILLAR` | pillar to link to (one of: competition, distribution, economics, execution, market, problem, timing, value) |
+| `--gate GATE` | gate to link to (one of: compliance_path, credible_growth_channel, data_and_safety, delivery_capacity, delivery_margin, demand_commitments, funding_runway, jurisdiction_review, liquidity_model, owner_dependence, paid_engagement, pricing_test, professional_review, repeatable_channel, supply_commitments, transaction_margin, venture_scale_market) |
+| `--evaluation EVALUATION` | evaluation.json (default: the active run's) |
+| `--run ID` | run id (default: the active run) |
+
+```text
+greenfield evidence link EV-3f2a --pillar value
+greenfield evidence link C7 --gate jurisdiction_review
+```
+
+## greenfield evidence status
+
+Pillars, receipts, gates, unreviewed claims and inbox warnings.
+
+| Option | What it does |
+| --- | --- |
+| `--evaluation EVALUATION` | evaluation.json (default: the active run's) |
+| `--run ID` | run id (default: the active run) |
+
+```text
+greenfield evidence status
+```
+
+## greenfield evidence redact
+
+Write a redacted copy into materials/inbox/.
+
+| Option | What it does |
+| --- | --- |
+| `file` | the file to redact |
+| `--drop-column NAME` | CSV or TSV column to remove (repeatable) |
+| `--mask LIST` | comma list of emails, phones, cards |
+| `--evaluation EVALUATION` | evaluation.json (default: the active run's) |
+| `--run ID` | run id (default: the active run) |
+
+```text
+greenfield evidence redact materials/raw/x.csv --drop-column email
+```
+
+## greenfield evidence init
+
+Add a missing evaluation_id and the materials folders (agent-safe).
+
+| Option | What it does |
+| --- | --- |
+| `--evaluation EVALUATION` | evaluation.json (default: the active run's) |
+| `--run ID` | run id (default: the active run) |
+
+```text
+greenfield evidence init
+```
+
+## greenfield evidence types
+
+What each --as type can prove on this profile.
+
+| Option | What it does |
+| --- | --- |
+| `--evaluation EVALUATION` | evaluation.json (default: the active run's) |
+| `--run ID` | run id (default: the active run) |
+
+```text
+greenfield evidence types
+```
+
+## greenfield evidence experiment
+
+Add experiments for proof you already have.
+
+```text
+greenfield evidence experiment add --id EXP-4 --pillar value --hypothesis 'They pay'
+```
+
+## greenfield evidence experiment add
+
+Append a proposed experiment (agent-safe).
+
+| Option | What it does |
+| --- | --- |
+| `--id ID` | experiment id, such as EXP-4 |
+| `--pillar PILLAR` | pillar it tests (repeatable) (one of: competition, distribution, economics, execution, market, problem, timing, value) |
+| `--hypothesis HYPOTHESIS` | what the experiment tests |
+| `--success-threshold SUCCESS_THRESHOLD` | the bar a pass must clear |
+| `--evaluation EVALUATION` | evaluation.json (default: the active run's) |
+| `--run ID` | run id (default: the active run) |
+
+```text
+greenfield evidence experiment add --id EXP-4 --pillar value --hypothesis 'They pay'
+```
+
+## greenfield evidence assessed
+
+Stamp pillars as re-assessed now (agent-safe).
+
+| Option | What it does |
+| --- | --- |
+| `pillars` | pillars you re-assessed (one of: competition, distribution, economics, execution, market, problem, timing, value) |
+| `--evaluation EVALUATION` | evaluation.json (default: the active run's) |
+| `--run ID` | run id (default: the active run) |
+
+```text
+greenfield evidence assessed problem value
 ```
 
 ## greenfield ledger
@@ -375,15 +526,16 @@ Append one event (receipts need a person at a terminal).
 | `--ledger LEDGER` | the .jsonl ledger file (default: the active run's) |
 | `--run ID` | run id (default: the active run) |
 | `--kind KIND` | event kind (one of: customer_action, customer_interview, decision_revision, experiment_result, failure, feasibility_proof, hypothesis, note, paid_test, repeat_purchase, signed_commitment, source_review) |
-| `--project-name PROJECT_NAME` | the idea or project this event belongs to |
-| `--hypothesis HYPOTHESIS` | the hypothesis tested |
+| `--project-name PROJECT_NAME` | label only (default: project.name beside the ledger, then the folder name) |
+| `--hypothesis HYPOTHESIS` | the hypothesis tested (optional for source reviews) |
 | `--outcome OUTCOME` | what happened |
 | `--artifact ARTIFACT` | evidence file inside the ledger's folder |
 | `--attester ATTESTER` | the person confirming a receipt |
 | `--observed-at DATE` | when it was observed (default today) |
 | `--notes NOTES` | free-text notes |
-| `--pillar PILLAR` | pillar this evidence supports (repeatable) |
+| `--pillar PILLAR` | pillar this evidence supports (repeatable) (one of: competition, distribution, economics, execution, market, problem, timing, value) |
 | `--claim-id CLAIM_ID` | claim id, for source reviews |
+| `--gate GATE` | pilot gate a source review is for (one of: compliance_path, credible_growth_channel, data_and_safety, delivery_capacity, delivery_margin, demand_commitments, funding_runway, jurisdiction_review, liquidity_model, owner_dependence, paid_engagement, pricing_test, professional_review, repeatable_channel, supply_commitments, transaction_margin, venture_scale_market) |
 | `--experiment-id EXPERIMENT_ID` | experiment id |
 
 ```text
@@ -431,6 +583,20 @@ Interactively re-confirm unsigned attested events.
 ```text
 greenfield ledger reattest --ledger experiment-ledger.jsonl
 greenfield --json ledger reattest --ledger research/greenfield/x/experiment-ledger.jsonl
+```
+
+## greenfield ledger reidea
+
+Terminal only: carry receipts across a typo-sized edit of the idea.
+
+| Option | What it does |
+| --- | --- |
+| `--ledger LEDGER` | the .jsonl ledger file (default: the active run's) |
+| `--run ID` | run id (default: the active run) |
+
+```text
+greenfield ledger reidea --ledger experiment-ledger.jsonl
+greenfield --json ledger reidea --ledger research/greenfield/x/experiment-ledger.jsonl
 ```
 
 ## greenfield score

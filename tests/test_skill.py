@@ -54,7 +54,7 @@ def back_core(base, data, stamp="r"):
     data.setdefault("evaluation_id", "eval-fixture0")
     data["execution"]["customer_validation_performed"] = True
     data["evidence_ledger"] = "experiment-ledger.jsonl"
-    bind = {"evaluation_id": data["evaluation_id"], "run_slug": pathlib.Path(base).name, "idea_sha": gf_materials.idea_sha(data["project"]), "result": "pass"}
+    bind = {**gf_materials.binding(data, base), "result": "pass"}
     events = []
     for i, group in enumerate((("problem", "market"), ("value", "economics"), ("distribution",))):
         name = f"{stamp}{i}.txt"

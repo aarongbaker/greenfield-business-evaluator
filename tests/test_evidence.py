@@ -168,6 +168,18 @@ class PiiTests(Base):
         self.assertIn(gf_materials.NAMES_WARNING, out)
         self.assertFalse((self.folder / "materials/inbox/t.redacted.md").exists())
 
+    def test_preview_shows_type_size_rows_and_first_lines(self):
+        p = self.csv()
+        info = gf_materials._file_preview(p)
+        self.assertEqual((info["type"], info["rows"]), ("text/csv", "2"))
+        self.assertIn("amount,plan", info["first lines"])
+
+    def test_doctor_flags_inbox_personal_data(self):
+        self.start()
+        inbox = self.folder / "materials/inbox"
+        (inbox / "x.csv").write_text("email\na@b.co\n")
+        self.assertTrue(gf_materials.inbox_warnings(self.folder))
+
     def test_binary_needs_declaration_and_real_magic(self):
         self.start()
         pdf = self.root / "x.pdf"

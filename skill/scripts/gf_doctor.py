@@ -148,7 +148,7 @@ def c_hooks(ctx):
     mine = [(plat, p, c) for plat, p, hooks in _hook_files(ctx["project"]) for c in _ours_commands(hooks)]
     if not mine:
         return [_r("hooks.configured", "Hooks", "info", "no Greenfield hooks (optional)", "greenfield hooks install"),
-                _r("hooks.guard", "Hooks", "info", "self-attestation guard not installed (hooks are optional)", "greenfield hooks install"),
+                _r("hooks.guard", "Hooks", "warn", "self-attestation guard not installed", "greenfield hooks install --guard-only"),
                 _r("hooks.codex_trust", "Hooks", "info", "Codex trust cannot be read from disk", "Open /hooks in Codex and approve the Greenfield hooks")]
     out = [_r("hooks.configured", "Hooks", "pass", f"{len(mine)} Greenfield hook entries")]
     broken = []
@@ -273,6 +273,10 @@ def c_run(ctx):
             out.append(_r("run.ledger", "Run", "fail", f"{e}", f"Restore {run['ledger']} from a backup or git; the first broken event is named above"))
     else:
         out.append(_r("run.ledger", "Run", "info", "no experiment ledger yet"))
+    import gf_materials
+    pii = gf_materials.inbox_warnings(ev.parent)
+    if pii:
+        out.append(_r("run.inbox_pii", "Run", "warn", f"{len(pii)} file(s) in materials/inbox/ hold personal data; first: {pii[0]}", "Run the greenfield evidence redact command it names"))
     return out
 
 

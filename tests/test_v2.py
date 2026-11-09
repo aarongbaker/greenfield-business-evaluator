@@ -255,7 +255,7 @@ class PrivateOutputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             d=Path(d);(d/'e.json').write_text('{}');(d/'m.json').write_text('{}')
             ledger.append(d/'led'/'x.jsonl','note','P','h')
-            with mock.patch.object(evidence,'analyze',return_value={'summary':{}}):
+            with mock.patch.object(evidence,'analyze',return_value={'summary':{},'claims':[]}):
                 evidence.main([str(d/'e.json'),'--output',str(d/'ev'/'o.json')])
             with mock.patch.object(gf_portfolio,'evaluate_portfolio',return_value={'opportunities':[],'recommendation':''}),mock.patch.object(gf_portfolio,'to_markdown',return_value='x'):
                 gf_portfolio.main([str(d/'m.json'),'--output',str(d/'po'/'o.json'),'--markdown',str(d/'pm'/'o.md')])

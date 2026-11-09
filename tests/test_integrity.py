@@ -1,11 +1,18 @@
 """W42/W43/W40/W41: what a signed receipt must be before it can carry a Proceed."""
+import argparse
+import json
 import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from test_skill import attest, back_core, sample, scorer
+import gf_evidence
+import gf_ledger
+import gf_materials
+from gf_common import GFError
 
 PROCEED = "PROCEED_TO_BOUNDED_PILOT"
 
@@ -72,6 +79,100 @@ class ReceiptRules(unittest.TestCase):
         _, warnings = scorer.validate(self.data, self.base)
         self.assertTrue(any("different idea" in w for w in warnings), warnings)
         self.assertNotEqual(scorer.score(self.data, warnings)["decision"], PROCEED)
+
+
+
+class SourceReviews(unittest.TestCase):
+    def setUp(self):
+        t = tempfile.TemporaryDirectory()
+        self.addCleanup(t.cleanup)
+        self.base = pathlib.Path(t.name).resolve()
+        self.ev = self.base / "evaluation.json"
+        self.report = self.base / "source-verification.json"
+        self.ledger = self.base / "experiment-ledger.jsonl"
+        self.claims = [{"id": "C1", "pillar": "market", "classification": "fact", "statement": "Market fact", "source_url": "https://example.org/a",
+                        "accessed_date": "2026-10-23", "supporting_quote": "quoted text"}]
+        self.page = {"url": "https://example.org/a", "content_sha256": "aaa", "text": "the quoted text here"}
+        self.write()
+
+    def write(self):
+        data = sample()
+        data["evaluation_id"] = "eval-x"
+        data["claims"] = self.claims
+        self.ev.write_text(json.dumps(data))
+
+    def sources(self, force=False):
+        with mock.patch.object(gf_evidence, "fetch_public", lambda url: self.page):
+            return gf_evidence.check(self.ev, self.report, allow_network=True, force=force)
+
+    def args(self):
+        return argparse.Namespace(kind="source_review", ledger=str(self.ledger), artifact=str(self.report), claim_id="C1", gate=None)
+
+    def review(self):
+        attest(self.ledger, "source_review", "F", "H", outcome="supported", artifact="source-verification.json", attester="Human", claim_id="C1", extra=gf_ledger._review_binding(self.args()))
+
+    def valid(self):
+        return gf_ledger.reviewed_claims(self.ledger, "source-verification.json")
+
+    def test_page_noise_and_new_claims_keep_the_review(self):
+        self.sources()
+        self.review()
+        self.page = {**self.page, "content_sha256": "bbb", "text": "changed page, the quoted text here"}
+        before = self.report.read_bytes()
+        self.sources()
+        self.assertEqual(self.report.read_bytes(), before)
+        self.claims.append({**self.claims[0], "id": "C2", "source_url": "https://example.org/b"})
+        self.write()
+        self.sources()
+        self.assertEqual(self.valid(), {"C1": "supported"})
+
+    def test_changed_excerpt_voids_only_with_force(self):
+        self.sources()
+        self.review()
+        self.page = {**self.page, "text": "nothing relevant"}
+        with self.assertRaisesRegex(GFError, "1 source reviews will be voided: C1"):
+            self.sources()
+        self.assertEqual(self.valid(), {"C1": "supported"})
+        self.sources(force=True)
+        self.assertEqual(self.valid(), {})
+
+    def test_hand_edited_entry_is_refused_and_flagged(self):
+        self.sources()
+        report = json.loads(self.report.read_text())
+        report["claims"][0]["excerpt_check"] = "not_found"
+        self.report.write_text(json.dumps(report))
+        with self.assertRaisesRegex(GFError, "not produced by greenfield sources check"):
+            gf_ledger._review_binding(self.args())
+        self.assertTrue(gf_materials._bad_entries(json.loads(self.ev.read_text()), self.base))
+
+    def test_new_key_created_by_sources_check(self):
+        self.sources()
+        self.assertTrue(gf_ledger.load_key())
+
+
+class IdeaChange(ReceiptRules):
+    def typo(self, text):
+        self.data["project"]["idea"] = text
+        (self.base / "evaluation.json").write_text(json.dumps(self.data))
+
+    def test_typo_keeps_receipts_and_is_printed_forever(self):
+        self.typo("Test concepts")
+        gf_materials.reidea(self.base / "experiment-ledger.jsonl", confirm=lambda s: None)
+        r = self.run_score()
+        self.assertEqual(r["decision"], PROCEED)
+        self.assertIn("receipts carried across an idea change", r["warnings"])
+
+    def test_reframe_refused(self):
+        self.typo("Something else altogether for other people")
+        with self.assertRaisesRegex(GFError, "more than a typo"):
+            gf_materials.reidea(self.base / "experiment-ledger.jsonl", confirm=lambda s: None)
+
+    def test_limit_is_cumulative(self):
+        self.typo("Test concept AAAA")
+        gf_materials.reidea(self.base / "experiment-ledger.jsonl", confirm=lambda s: None)
+        self.typo("Test concept AAAABBBBBBB")
+        with self.assertRaisesRegex(GFError, "more than a typo"):
+            gf_materials.reidea(self.base / "experiment-ledger.jsonl", confirm=lambda s: None)
 
 
 if __name__ == "__main__":

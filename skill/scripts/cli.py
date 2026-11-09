@@ -108,6 +108,8 @@ def h_install(args):
     if not gf_platform.HAS_FCNTL:  # W26: the skill installs anywhere; research runs need WSL here
         print("note: research runs need WSL on native Windows (file locking); the skill still installs.", file=sys.stderr)
     done = gf_install.install(targets, args.force, args.scope, args.overwrite_modified)
+    if not args.no_guard:
+        gf_install.install_guard(args.platform, args.scope, args.project)
     if args.scope == "project":
         gf_install.offer_gitignore(base, add=args.gitignore, never=args.no_gitignore, out=sys.stderr)
     return {"installed": [str(p) for p in done], "plan": acts, "next": ["Claude: /greenfield-business-evaluator <idea>", "Codex:  $greenfield-business-evaluator <idea>"]}
@@ -237,7 +239,7 @@ def h_sources(args):
     if args.evaluation is None or args.output is None:
         ctx = _ctx(args)
         args.evaluation, args.output = args.evaluation or ctx["evaluation"], args.output or ctx["verification"]
-    return gf_evidence.check(args.evaluation, args.output, args.allow_network, args.stale_days)
+    return gf_evidence.check(args.evaluation, args.output, args.allow_network, args.stale_days, args.force)
 
 
 def h_ledger(args):
@@ -319,6 +321,7 @@ def build_parser():
     p.add_argument("--platform", choices=PLATFORMS, default="both", help="which agent host (default: both)")
     p.add_argument("--scope", choices=("project", "user"), default="project", help="install into --project or your home folder")
     p.add_argument("--no-agents", action="store_true", help="install the skill only, not the nine research roles")
+    p.add_argument("--no-guard", action="store_true", help="skip the hook that stops agents recording human attestations")
     p.add_argument("--force", action="store_true", help="replace files this tool installed before")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--gitignore", action="store_true", help="add private research folders to .gitignore without asking")
@@ -432,6 +435,7 @@ def build_parser():
     p.add_argument("--output", type=Path, help="where to write the full report (default: source-verification.json beside the run's evaluation)")
     p.add_argument("--allow-network", action="store_true", help="fetch PUBLIC pages; off by default")
     p.add_argument("--stale-days", type=int, default=730, help="sources older than this are flagged (default 730)")
+    p.add_argument("--force", action="store_true", help="re-check even when that voids existing source reviews")
 
     gf_materials.register(sub, _cmd, _group, _ctx)
 
@@ -443,19 +447,20 @@ def build_parser():
     p.add_argument("--ledger", help="the .jsonl ledger file (default: the active run's)")
     _run_arg(p)
     p.add_argument("--kind", required=True, choices=sorted(LEDGER_KINDS), help="event kind")
-    p.add_argument("--project-name", required=True, help="the idea or project this event belongs to")
-    p.add_argument("--hypothesis", required=True, help="the hypothesis tested")
+    p.add_argument("--project-name", default="", help="label only (default: project.name beside the ledger, then the folder name)")
+    p.add_argument("--hypothesis", default="", help="the hypothesis tested (optional for source reviews)")
     p.add_argument("--outcome", default="", help="what happened")
     p.add_argument("--artifact", help="evidence file inside the ledger's folder")
     p.add_argument("--attester", default="", help="the person confirming a receipt")
     p.add_argument("--observed-at", default="", metavar="DATE", help="when it was observed (default today)")
     p.add_argument("--notes", default="", help="free-text notes")
-    p.add_argument("--pillar", action="append", default=[], help="pillar this evidence supports (repeatable)")
+    p.add_argument("--pillar", action="append", default=[], choices=sorted(gf_profiles.BASE), help="pillar this evidence supports (repeatable)")
     p.add_argument("--claim-id", default="", help="claim id, for source reviews")
     p.add_argument("--gate", choices=sorted(gf_profiles.GATE_HELP), help="pilot gate a source review is for")
     p.add_argument("--experiment-id", default="", help="experiment id")
     for name, help in (("verify", "check the hash chain (exit 1 if broken)"), ("summary", "count events and check behavior receipts"),
-                       ("reattest", "interactively re-confirm unsigned attested events")):
+                       ("reattest", "interactively re-confirm unsigned attested events"),
+                       ("reidea", "terminal only: carry receipts across a typo-sized edit of the idea")):
         p = _cmd(ledger, name, help, [f"greenfield ledger {name} --ledger experiment-ledger.jsonl",
                                       f"greenfield --json ledger {name} --ledger research/greenfield/x/experiment-ledger.jsonl"], h_ledger)
         p.add_argument("--ledger", help="the .jsonl ledger file (default: the active run's)")

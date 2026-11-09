@@ -13,6 +13,7 @@ from collections import Counter, defaultdict
 import datetime as dt
 from html.parser import HTMLParser
 import hashlib
+import hmac
 import ipaddress
 import json
 import re
@@ -23,7 +24,8 @@ import time
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-from gf_common import VERSION, atomic_write_json, load_json, old_entry
+from gf_common import VERSION, atomic_write_json, load_json, old_entry, GFError
+import gf_ledger
 
 MAX_BYTES = 2_000_000
 TIMEOUT = 8
@@ -208,13 +210,61 @@ def analyze(data, *, allow_network=False, fetcher=None, as_of=None, stale_days=7
             'limitations':'Source text and matching excerpts do not establish claim truth. Screenshots, PDFs, JS pages, paywalls, semantics and behavioral receipts need human review.'}
 
 
-def check(evaluation,output,allow_network=False,stale_days=730):
+STABLE=('claim_id','source_url','source_url_final','excerpt_check','fetch_status')
+
+
+def entry_digest(item,claim):
+    """Digest of what a reviewer judged; page noise (content hash, overlap, timestamps) is left out so re-fetches keep reviews valid."""
+    fields=[item.get(k) for k in STABLE]+[claim.get('supporting_quote',''),claim.get('statement','')]
+    return hashlib.sha256(json.dumps(fields,ensure_ascii=False,sort_keys=True).encode('utf-8')).hexdigest()
+
+
+def _entry_sig(key,digest):
+    return hmac.new(key,digest.encode('ascii'),hashlib.sha256).hexdigest()
+
+
+def entry_problem(item,claim,key):
+    """None when the report entry is the one `sources check` signed for this claim, else the reason."""
+    if not key or not isinstance(item.get('entry_sig'),str) or not hmac.compare_digest(item['entry_sig'],_entry_sig(key,entry_digest(item,claim))):
+        return 'not produced by greenfield sources check'
+    return None
+
+
+def _reviewed_ids(output):
+    try:
+        return {e.get('claim_id') for e in gf_ledger.read_ledger(Path(output).parent/gf_ledger.LEDGER_NAME) if e['kind']=='source_review'}
+    except (OSError,ValueError):
+        return set()
+
+
+def check(evaluation,output,allow_network=False,stale_days=730,force=False):
     """Check the evaluation's sources, write the full report to output, return its summary."""
     data=load_json(evaluation)
     if stale_days<1:raise ValueError('stale-days must be positive')
     report=analyze(data,allow_network=allow_network,as_of=data.get('as_of'),stale_days=stale_days)
+    gf_ledger.ensure_key()
+    key=gf_ledger.load_key()
     output=Path(output);output.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
-    atomic_write_json(output,report,mode=0o600)
+    try:
+        old={c.get('claim_id'):c for c in load_json(output).get('claims',[])}
+    except (OSError,ValueError,AttributeError):
+        old={}
+    claims={c.get('id'):c for c in data.get('claims',[]) if isinstance(c,dict)}
+    changed=[]
+    for i,item in enumerate(report['claims']):
+        sig=_entry_sig(key,entry_digest(item,claims.get(item['claim_id'],{})))
+        previous=old.get(item['claim_id'])
+        if previous and previous.get('entry_sig')==sig:
+            report['claims'][i]=previous
+        else:
+            item['entry_sig']=sig;changed.append(item['claim_id'])
+    voided=sorted(c for c in changed if c in old and c in _reviewed_ids(output))
+    if voided and not force:
+        message=f"{len(voided)} source reviews will be voided: {', '.join(map(str,voided))}"
+        if not sys.stdin.isatty() or input(message+'. Continue? [y/N] ').strip().lower()!='y':
+            raise GFError(message,hint='re-run with --force, then review those claims again')
+    if changed or not output.exists() or set(old)!={c['claim_id'] for c in report['claims']}:  # an unchanged re-run leaves the report byte-identical
+        atomic_write_json(output,report,mode=0o600)
     return report['summary']
 
 
@@ -225,9 +275,10 @@ def main(argv=None):
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--allow-network',action='store_true',help='Explicitly fetch PUBLIC pages; disabled by default')
     p.add_argument('--stale-days',type=int,default=730)
+    p.add_argument('--force',action='store_true',help='re-check even when that voids existing source reviews')
     args=p.parse_args(argv)
     try:
-        print(json.dumps(check(args.evaluation,args.output,args.allow_network,args.stale_days),indent=2))
+        print(json.dumps(check(args.evaluation,args.output,args.allow_network,args.stale_days,args.force),indent=2))
     except (OSError,ValueError,json.JSONDecodeError) as exc:
         print('ERROR:',exc,file=sys.stderr);return 2
     return 0

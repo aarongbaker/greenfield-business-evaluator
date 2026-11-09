@@ -14,7 +14,7 @@ from gf_roles import hook_matcher
 NAME = "greenfield-business-evaluator"
 MARKER = "gf_observe.py"
 GUARD_MARKER = " hook guard --"  # W27: the self-attestation guard's own marker
-GUARD_MATCHER = "Bash|Write|Edit|MultiEdit|NotebookEdit|apply_patch"
+GUARD_MATCHER = "Bash|Write|Edit|MultiEdit|NotebookEdit|apply_patch|Read|Grep|Glob"
 REGEX = hook_matcher()
 PLATFORM_EVENTS = {
     "claude": ("SubagentStart", "SubagentStop", "PreToolUse", "PostToolUseFailure"),
@@ -86,7 +86,9 @@ def transform(path, command, mode, *, platform, guard=None):
     if not hooks:
         data.pop("hooks", None)
     # Avoid writing back if unchanged; never overwrite without parsing existing JSON.
-    if data != old:
+    if data != old and mode == "remove" and not data:
+        path.unlink()  # we created it; leave no empty settings file behind
+    elif data != old:
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(path, data)
     return data != old

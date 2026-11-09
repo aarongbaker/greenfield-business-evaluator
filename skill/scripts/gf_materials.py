@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import io
 import json
+import mimetypes
 from pathlib import Path
 import re
 import secrets
@@ -110,6 +111,45 @@ def idea_sha(project):
     return hashlib.sha256(f"{project.get('idea', '')}\n{project.get('initial_customer', '')}".encode("utf-8")).hexdigest()
 
 
+def idea_text(project):
+    """The idea and initial customer, normalized for case and whitespace (what reidea compares)."""
+    return " ".join(f"{project.get('idea', '')} / {project.get('initial_customer', '')}".casefold().split())
+
+
+def binding(data, folder):
+    return {"evaluation_id": data.get("evaluation_id", ""), "run_slug": Path(folder).resolve().name, "idea_sha": idea_sha(data["project"]), "idea_text": idea_text(data["project"])}
+
+
+def _distance(a, b):
+    row = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        prev, row[0] = row[0], i
+        for j, y in enumerate(b, 1):
+            prev, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, prev + (x != y))
+    return row[-1]
+
+
+def reidea(path, confirm=None):
+    """Sign a typo-sized idea edit so earlier receipts keep counting (Decision 9). The limit is cumulative from the first text."""
+    path = Path(path)
+    data = load_json(path.parent / "evaluation.json")
+    events, key = gf_ledger.read_ledger(path), gf_ledger.load_key()
+    signed = [e for e in events if e.get("idea_text") and e.get("idea_sha") and not gf_ledger.signature_problem(e, key)]
+    if not signed:
+        raise GFError("no signed receipts to carry across an idea change", path=path)
+    last, new_sha, new_text = signed[-1], idea_sha(data["project"]), idea_text(data["project"])
+    if last["idea_sha"] == new_sha:
+        return {"changed": False}
+    original = next((e["original_idea_text"] for e in reversed(signed) if e.get("original_idea_text")), signed[0]["idea_text"])
+    if _distance(original, new_text) > 10:
+        raise GFError("that is more than a typo fix (over 10 characters from the original idea)", hint='greenfield start --new --idea "<new framing>", then re-record your receipts')
+    (confirm or gf_ledger.tty_confirm)({"old idea": last["idea_text"], "new idea": new_text})
+    fields = {"observed_at": dt.date.today().isoformat(), "kind": "idea_change", "project": data["project"].get("name") or path.parent.name, "hypothesis": "idea change", "outcome": "", "notes": "",
+              "attester": "", "human_attested": False, "artifact": None, "pillar_ids": [], "claim_id": "", "experiment_id": "",
+              **binding(data, path.parent), "previous_idea_sha": last["idea_sha"], "original_idea_text": original}
+    return gf_ledger._write(path, fields, gf_ledger.load_key())
+
+
 def exp_pillars(exp):
     if isinstance(exp.get("pillars"), list):
         return exp["pillars"]
@@ -173,6 +213,16 @@ inbox/    redacted or PII-free files. The assistant reads these and they reach y
 Redact first:   greenfield evidence redact materials/raw/FILE --drop-column email
 Record proof:   greenfield evidence add FILE --as TYPE ...   (see: greenfield evidence types)
 """
+
+
+def _file_preview(path):
+    """What the human sees before signing: type, size, and for text files the row count and first lines."""
+    out = {"type": mimetypes.guess_type(path.name)[0] or "unknown", "size": f"{path.stat().st_size} bytes"}
+    if path.suffix.lower() in TEXT:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        out["rows"] = str(max(len(lines) - 1, 0)) if path.suffix.lower() in (".csv", ".tsv") else f"{len(lines)} lines"
+        out["first lines"] = "\n  ".join(line[:120] for line in lines[:5])
+    return out
 
 
 def snapshot(folder, data):
@@ -328,7 +378,7 @@ def add(args):
     reused = _other_runs(folder, sha, rows)
     outcome = args.outcome or args.result
     fields = {"material": args.as_type, "evaluation_id": data["evaluation_id"], "run_slug": folder.name,
-              "idea_sha": idea_sha(data["project"]), "idea_text": str(data["project"].get("idea", ""))[:200], "gate_ids": [gate] if gate else [],
+              "idea_sha": idea_sha(data["project"]), "idea_text": idea_text(data["project"]), "gate_ids": [gate] if gate else [],
               "result": args.result, "consent": args.consent, "success_threshold": (exp or {}).get("success_threshold", ""), "reused_from": reused,
               "pii": "keep: " + args.keep_pii if args.keep_pii else "declared_redacted" if args.redacted else "clean", "confirm_via": "tty", "row_hashes": rows}
     if data.get("legacy"):
@@ -355,6 +405,7 @@ def add(args):
     project = data["project"].get("name") or folder.name
     preview = {"material": args.as_type, "result": args.result, "threshold": fields["success_threshold"] or "none set", "pillars": ", ".join(pillars) or "none",
                "gates": gate or "none", "consent": args.consent, "personal data": "not scanned for personal data" if not scanned else (", ".join(pii) or "none found")}
+    preview.update(_file_preview(target))
     if reused:
         preview["previously recorded for"] = ", ".join(reused)
     try:
@@ -491,16 +542,30 @@ def status(args):
     rs = receipts(events)
     pillars = {p: {"evidence": data["pillars"][p].get("evidence"), "receipts": [e["id"] for e in rs if p in e["pillar_ids"]]} for p in ALL if p in data["pillars"]}
     gates = {g: (data.get("pilot_gates") or {}).get(g, {"passed": False, "evidence_ids": []}) for g in PROFILES.get(data["project"].get("business_model", "general"), PROFILES["general"])["pilot_gates"]}
-    warnings = []
-    inbox = folder / "materials" / "inbox"
-    for f in sorted(inbox.iterdir()) if inbox.is_dir() else []:
-        if f.is_file() and f.suffix.lower() in TEXT:
-            found = pii_found(f)
-            if found:
-                warnings.append(f"{f.name} in materials/inbox/ holds {', '.join(found)}: greenfield evidence redact {f}")
+    warnings = inbox_warnings(folder) + _bad_entries(data, folder)
     return {"evaluation_id": data["evaluation_id"], "pillars": pillars, "gates": gates, "receipts": [
         {"id": e["id"], "kind": e["kind"], "material": e.get("material"), "result": e.get("result"), "pillars": e["pillar_ids"], "gates": e.get("gate_ids", [])} for e in rs],
         "unreviewed_claims": _unreviewed(data, folder, events), "warnings": warnings}
+
+
+def _bad_entries(data, folder):
+    import gf_evidence
+    try:
+        entries = load_json(Path(folder) / "source-verification.json").get("claims", [])
+    except (OSError, ValueError, GFError, AttributeError):
+        return []
+    claims, key = {c.get("id"): c for c in data.get("claims", []) if isinstance(c, dict)}, gf_ledger.load_key()
+    return [f"{e.get('claim_id')}: {gf_evidence.entry_problem(e, claims.get(e.get('claim_id'), {}), key)}" for e in entries if gf_evidence.entry_problem(e, claims.get(e.get("claim_id"), {}), key)]
+
+
+def inbox_warnings(folder):
+    """Personal data found in materials/inbox/, which the assistant may read."""
+    inbox = Path(folder) / "materials" / "inbox"
+    out = []
+    for f in sorted(inbox.iterdir()) if inbox.is_dir() else []:
+        if f.is_file() and f.suffix.lower() in TEXT and (found := pii_found(f)):
+            out.append(f"{f.name} in materials/inbox/ holds {', '.join(found)}: greenfield evidence redact {f}")
+    return out
 
 
 def _unreviewed(data, folder, events):
@@ -509,7 +574,10 @@ def _unreviewed(data, folder, events):
         entries = {c.get("claim_id"): c for c in load_json(report).get("claims", [])}
     except (OSError, ValueError, GFError):
         entries = {}
-    done = {e.get("claim_id") for e in events if e["kind"] == "source_review"}
+    try:
+        done = set(gf_ledger.reviewed_claims(folder / gf_ledger.LEDGER_NAME, "source-verification.json"))
+    except (OSError, ValueError):
+        done = {e.get("claim_id") for e in events if e["kind"] == "source_review"}
     used = {c for item in data["pillars"].values() if isinstance(item, dict) for c in item.get("claim_ids", [])}
     gate_of = {c: g for g, entry in (data.get("pilot_gates") or {}).items() if isinstance(entry, dict) for c in entry.get("evidence_ids", [])}
     rel = f"research/greenfield/{folder.name}"
@@ -661,6 +729,12 @@ def analyze(data, ledger_path, folder):
     key = gf_ledger.load_key()
     out["anchor"] = anchor = next((e["evaluation_id"] for e in events if e.get("sig") and e.get("evaluation_id")), None)
     try:
+        reachable = {current}
+        for c in reversed([e for e in events if e.get("kind") == "idea_change" and not gf_ledger.signature_problem(e, key)]):
+            if c["idea_sha"] in reachable:
+                reachable.add(c["previous_idea_sha"])
+        if len(reachable) > 1:
+            out["warnings"].append("receipts carried across an idea change")
         for e in receipts(events):
             if not e.get("evaluation_id"):
                 out["legacy"] = True
@@ -668,7 +742,7 @@ def analyze(data, ledger_path, folder):
             elif e["evaluation_id"] != anchor or e.get("run_slug") != folder.name:
                 out["warnings"].append(f"Receipt {e['id']} belongs to another evaluation and does not count")
                 continue
-            elif e.get("idea_sha") != current:
+            elif e.get("idea_sha") not in reachable:
                 out["warnings"].append(f"Receipt {e['id']}: receipt recorded for a different idea")
                 continue
             out["counted"].append(e)
