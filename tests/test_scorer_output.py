@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from test_skill import ROOT, TEMPLATE, attest, sample, scorer
+from test_skill import back_core, ROOT, TEMPLATE, attest, sample, scorer
 
 FIXTURES = ROOT / "tests" / "fixtures"
 SNAPSHOTS = ROOT / "tests" / "snapshots"
@@ -36,19 +36,11 @@ def scored(data, base=None):
 
 
 def receipt_data(base, quality):
-    """Core evidence 3 backed by a real attested receipt in base, every pillar at the given quality."""
-    (base / "receipt.txt").write_text("SYNTHETIC TEST RECEIPT")
-    event = attest(base / "experiments.jsonl", "paid_test", "Fixture", "Test measurable intent", outcome="synthetic fixture",
-                   artifact="receipt.txt", attester="Human Fixture", pillars=list(scorer.CORE))
+    """Core evidence 3 backed by real attested receipts in base, every pillar at the given quality (non-core capped at 3)."""
     data = sample()
-    data["execution"]["customer_validation_performed"] = True
-    data["evidence_ledger"] = "experiments.jsonl"
     for p in scorer.PILLAR_WEIGHTS:
         data["pillars"][p]["quality"] = quality
-    for p in scorer.CORE:
-        data["pillars"][p]["evidence"] = 3
-        data["pillars"][p]["behaviors"] = [{"kind": "paid_test", "description": "Fixture only", "observed_at": "2026-10-22",
-                                            "source_or_artifact": "receipt.txt", "verified": True, "ledger_event_id": event["id"]}]
+    back_core(base, data, stamp=f"q{quality}-")
     return data
 
 
@@ -95,10 +87,10 @@ class FieldTests(unittest.TestCase):
         data["pillars"]["economics"]["evidence"] = 0
         self.assert_fields(scored(data), "VALIDATE_BEFORE_BUILD",
                            "Evidence is thin on economics and problem: test these before building",
-                           "Record a paid-test result for economics with `greenfield ledger record`, then re-score.")
-        data["experiments"] = [{"id": "X1", "hypothesis": "Ten HR leads pay $50 for a benchmark"}]
+                           "Test economics with real customers, record it with `greenfield evidence add`, then re-score.")
+        data["experiments"] = [{"id": "X1", "pillars": ["economics"], "hypothesis": "Ten HR leads pay $50 for a benchmark"}]
         self.assertEqual(scored(data)["next_step"],
-                         "Run X1 (Ten HR leads pay $50 for a benchmark), record the result with `greenfield ledger record`, then re-score.")
+                         "Run X1 for economics (Ten HR leads pay $50 for a benchmark), record it with greenfield evidence add, then re-score.")
 
     def test_no_go(self):
         self.assert_fields(scorer.score_file(FIXTURES / "no-go.json")[0], "NO_GO",
@@ -170,6 +162,12 @@ def apply_gap(data, result):
     return data, [w for w in warnings if not w.startswith(("Unmet business-model", "Public citations", "No actual", "No live"))]
 
 
+def no_receipts(data, warnings):
+    """Score with the receipt rules met: apply_gap() edits fields and cannot sign receipts (test_evidence covers those)."""
+    with mock.patch.object(scorer, "proceed_problems", lambda *a: []):
+        return scorer.score(data, list(warnings))
+
+
 class VerdictGapTests(unittest.TestCase):
     def cases(self):
         paths = [TEMPLATE_PATH, ROOT / "skill/assets/demo-research/evaluation.json", *sorted(FIXTURES.glob("*.json"))]
@@ -190,11 +188,11 @@ class VerdictGapTests(unittest.TestCase):
         for name, data, result in self.cases():
             seen.add(result["decision"])
             fixed, warnings = apply_gap(data, result)
-            after = scorer.score(fixed, list(warnings))
+            after = no_receipts(fixed, warnings)
             if result["decision"] == "NO_GO":  # the gap names only the blocker; once it is resolved the next gap applies
                 self.assertNotEqual(after["decision"], "NO_GO", name)
                 fixed, warnings = apply_gap(fixed, after)
-                after = scorer.score(fixed, warnings)
+                after = no_receipts(fixed, warnings)
             self.assertEqual(after["decision"], "PROCEED_TO_BOUNDED_PILOT", name)
         self.assertTrue({"RESEARCH_INCOMPLETE", "VALIDATE_BEFORE_BUILD", "NO_GO", "PIVOT"} <= seen, seen)
 

@@ -26,7 +26,7 @@ def attest(*args, **kwargs):
     return gf_ledger.append(*args, confirm=lambda summary: None, **kwargs)
 
 
-def write_event(ledger_path, artifact, key=None, kind="paid_test", pillars=("problem", "market", "value", "economics", "distribution")):
+def write_event(ledger_path, artifact, key=None, kind="paid_test", pillars=("problem", "market")):
     """Append a raw event with the given artifact meta, bypassing append(): signed when key is given (legacy-style if not)."""
     import gf_ledger
     fields = {"observed_at": "2026-10-22", "kind": kind, "project": "Fixture", "hypothesis": "H", "outcome": "", "notes": "",
@@ -35,16 +35,44 @@ def write_event(ledger_path, artifact, key=None, kind="paid_test", pillars=("pro
     return gf_ledger._write(ledger_path, fields, key)
 
 
-def proceed_data(event_id, ledger="experiments.jsonl"):
-    """A filled fixture that scores PROCEED_TO_BOUNDED_PILOT when event_id is a valid receipt in ledger."""
+def proceed_data(event_id, ledger="experiment-ledger.jsonl", pillars=("problem", "market")):
+    """A filled fixture citing event_id at evidence 3 on the given core pillars. For Proceed use back_core()."""
     data = sample()
     data["execution"]["customer_validation_performed"] = True
     data["evidence_ledger"] = ledger
-    for p in scorer.CORE:
+    for p in pillars:
         data["pillars"][p]["evidence"] = 3
         data["pillars"][p]["behaviors"] = [{"kind": "paid_test", "description": "Fixture only", "observed_at": "2026-10-22",
                                             "source_or_artifact": "receipt.txt", "verified": True, "ledger_event_id": event_id}]
     return data
+
+
+def back_core(base, data, stamp="r"):
+    """Bring data to Proceed: three distinct signed passing receipts in base for the five core pillars, re-assessed after them."""
+    import datetime as dt
+    import gf_materials
+    data.setdefault("evaluation_id", "eval-fixture0")
+    data["execution"]["customer_validation_performed"] = True
+    data["evidence_ledger"] = "experiment-ledger.jsonl"
+    bind = {"evaluation_id": data["evaluation_id"], "run_slug": pathlib.Path(base).name, "idea_sha": gf_materials.idea_sha(data["project"]), "result": "pass"}
+    events = []
+    for i, group in enumerate((("problem", "market"), ("value", "economics"), ("distribution",))):
+        name = f"{stamp}{i}.txt"
+        (pathlib.Path(base) / name).write_text(f"SYNTHETIC TEST RECEIPT {stamp}{i}")
+        event = attest(pathlib.Path(base) / "experiment-ledger.jsonl", "paid_test", data["project"]["name"], "Test measurable intent", outcome="synthetic fixture",
+                       artifact=name, attester="Human Fixture", pillars=list(group), observed_at="2026-10-22", extra=bind)
+        events.append(event)
+        for p in group:
+            data["pillars"][p]["evidence"] = 3
+            data["pillars"][p]["behaviors"] = [{"kind": "paid_test", "description": "Fixture only", "observed_at": "2026-10-22",
+                                                "source_or_artifact": name, "verified": True, "ledger_event_id": event["id"]}]
+    later = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=1)).isoformat()
+    for p in scorer.PILLAR_WEIGHTS:
+        item = data["pillars"][p]
+        item["assessed_at"] = later
+        if p not in scorer.CORE and (item.get("quality") or 0) > 3:
+            item["quality"] = 3  # no receipt, so the rubric caps it
+    return events
 
 
 def sample():
@@ -83,18 +111,9 @@ class PolicyTests(unittest.TestCase):
 
     def test_documented_core_behavior_allows_bounded_pilot(self):
         data=sample()
-        data['execution']['customer_validation_performed']=True
         with tempfile.TemporaryDirectory() as d:
-            base=pathlib.Path(d)
-            proof=base/'receipt.txt';proof.write_text('SYNTHETIC TEST RECEIPT')
-            event=attest(base/'experiments.jsonl','paid_test','Fixture','Test measurable intent',
-                    outcome='synthetic fixture',artifact='receipt.txt',attester='Human Fixture',pillars=list(scorer.CORE))
-            data['evidence_ledger']='experiments.jsonl'
-            for p in scorer.CORE:
-                data['pillars'][p]['evidence']=3
-                data['pillars'][p]['behaviors']=[{'kind':'paid_test','description':'Fixture only','observed_at':'2026-10-22',
-                         'source_or_artifact':str(proof),'verified':True,'ledger_event_id':event['id']}]
-            errors,warnings=scorer.validate(data,base)
+            back_core(pathlib.Path(d),data)
+            errors,warnings=scorer.validate(data,pathlib.Path(d))
             self.assertFalse(errors,errors)
             self.assertEqual(scorer.score(data,warnings)['decision'],'PROCEED_TO_BOUNDED_PILOT')
 

@@ -63,7 +63,7 @@ class AttestationTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name).resolve()
         (self.root / "receipt.txt").write_text("SYNTHETIC TEST RECEIPT")
-        self.ledger = self.root / "ledger.jsonl"
+        self.ledger = self.root / "experiment-ledger.jsonl"
         self.cfg = self.root / "cfg"
         self.env = dict(os.environ, GF_CONFIG_DIR=str(self.cfg))
         self.env.pop("GF_ATTEST_KEY_FILE", None)
@@ -72,7 +72,7 @@ class AttestationTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def record_args(self):
-        return [LEDGER_CLI, "record", "--ledger", str(self.ledger), "--kind", "paid_test", "--project", "X", "--hypothesis", "H",
+        return [LEDGER_CLI, "record", "--ledger", str(self.ledger), "--kind", "source_review", "--claim-id", "C1", "--outcome", "supported", "--project", "X", "--hypothesis", "H",
                 "--artifact", str(self.root / "receipt.txt"), "--attester", "Jane Human", "--pillar", "problem"]
 
     def test_library_append_without_tty_refused(self):
@@ -91,7 +91,7 @@ class AttestationTests(unittest.TestCase):
         ok, why = ledger.verified_behavior(self.ledger, event["id"])
         self.assertFalse(ok)
         self.assertEqual(why, "receipt is unsigned (recorded before v2.1)")
-        data = proceed_data(event["id"], "ledger.jsonl")
+        data = proceed_data(event["id"])
         errors, warnings = scorer.validate(data, self.root)
         self.assertFalse(errors, errors)
         self.assertEqual(scorer.score(data, warnings)["decision"], "VALIDATE_BEFORE_BUILD")
@@ -110,7 +110,7 @@ class AttestationTests(unittest.TestCase):
         self.assertTrue(event["sig"].startswith("v1:"))
         self.assertEqual(event["artifact"]["path"], "receipt.txt")
         with mock.patch.dict(os.environ, GF_CONFIG_DIR=str(self.cfg)):
-            self.assertTrue(ledger.verified_behavior(self.ledger, event["id"], "problem")[0])
+            self.assertTrue(ledger.trusted_artifact(ledger.read_ledger(self.ledger), event, ledger.load_key())[0])
 
     def test_wrong_code_writes_nothing(self):
         status, out = run_on_pty(self.record_args(), self.env, lambda code: "ZZZZZZ" if code != "ZZZZZZ" else "YYYYYY")
@@ -147,14 +147,14 @@ class AttestationTests(unittest.TestCase):
                 self.ledger.write_text(original)
 
     def test_rotated_key_fails_with_reason(self):
-        event = attest(self.ledger, "paid_test", "X", "H", artifact="receipt.txt", attester="Jane Human", pillars=list(scorer.CORE))
+        event = attest(self.ledger, "paid_test", "X", "H", artifact="receipt.txt", attester="Jane Human", pillars=["problem", "market"])
         old_key = ledger.key_path()
         with mock.patch.dict(os.environ, GF_CONFIG_DIR=str(self.cfg)):
             self.assertEqual(ledger.verified_behavior(self.ledger, event["id"]), (False, "no attestation key on this machine"))
             ledger.ensure_key()
             self.assertEqual(ledger.verified_behavior(self.ledger, event["id"]),
                              (False, f"signed with a different key (key {event['key_id']})"))
-            data = proceed_data(event["id"], "ledger.jsonl")
+            data = proceed_data(event["id"])
             errors, warnings = scorer.validate(data, self.root)
             self.assertFalse(errors, errors)
             self.assertEqual(scorer.score(data, warnings)["decision"], "VALIDATE_BEFORE_BUILD")
@@ -165,7 +165,7 @@ class AttestationTests(unittest.TestCase):
         meta = ledger.artifact_digest("receipt.txt", self.root)
         meta["path"] = str(self.root / "receipt.txt")  # legacy events stored absolute paths
         legacy = write_event(self.ledger, meta)
-        data = proceed_data(legacy["id"], "ledger.jsonl")
+        data = proceed_data(legacy["id"])
         errors, warnings = scorer.validate(data, self.root)
         self.assertFalse(errors, errors)
         self.assertEqual(scorer.score(data, warnings)["decision"], "VALIDATE_BEFORE_BUILD")
@@ -175,7 +175,7 @@ class AttestationTests(unittest.TestCase):
         self.assertEqual(ledger.read_ledger(self.ledger)[-1]["artifact"]["path"], "receipt.txt")
         errors, warnings = scorer.validate(data, self.root)
         self.assertFalse(errors, errors)
-        self.assertEqual(scorer.score(data, warnings)["decision"], "PROCEED_TO_BOUNDED_PILOT")
+        self.assertEqual(scorer.score(data, warnings)["decision"], "VALIDATE_BEFORE_BUILD")  # still no evaluation binding (Decision 9)
         self.assertEqual(ledger.reattest(self.ledger, confirm=lambda summary: None), [])  # idempotent
 
     def test_notes_need_no_signature(self):

@@ -416,8 +416,7 @@ def link(args):
             raise GFError(f"unknown claim {args.id}")
         if "claim" not in GATE_HELP[args.gate]["accepts"]:
             raise GFError(f"{args.gate} accepts no claim")
-        import score_project
-        ok = score_project.claim_closes_gate(claim, args.gate, folder, events)
+        ok = claim_closes_gate(claim, args.gate, events)
         if not ok:
             raise GFError(f"{args.id} needs a source review naming {args.gate}", hint=f"greenfield ledger record --kind source_review --claim-id {args.id} --gate {args.gate} ...")
         entry = data.setdefault("pilot_gates", {}).setdefault(args.gate, {"passed": False, "evidence_ids": []})
@@ -616,3 +615,78 @@ def register(sub, cmd, group, ctx):
     p = cmd(ev, "assessed", "stamp pillars as re-assessed now (agent-safe)", ["greenfield evidence assessed problem value"], assessed)
     p.add_argument("pillars", nargs="+", choices=ALL, help="pillars you re-assessed")
     _target(p)
+
+
+def claim_digest(claim):
+    return gf_ledger.digest({k: claim.get(k) for k in ("statement", "source_url", "classification", "pillar")})
+
+
+def claim_closes_gate(claim, gate, events):
+    """True when the newest source review of this claim signed this gate and the claim's current text (Gate bindings)."""
+    if claim.get("classification") != "fact" or not claim.get("source_url"):
+        return False
+    key = gf_ledger.load_key()
+    last = None
+    for e in events:
+        if e.get("kind") == "source_review" and e.get("claim_id") == claim.get("id") and gf_ledger.trusted_artifact(events, e, key)[0]:
+            last = e
+    return bool(last) and last.get("outcome") == "supported" and gate in (last.get("gate_ids") or []) and last.get("claim_digest") == claim_digest(claim)
+
+
+def _when(stamp):
+    try:
+        t = dt.datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if "T" in str(stamp) and t.tzinfo else None
+
+
+def assessed_problem(stamp):
+    """Why an assessed_at value is unusable, or None. A date-only value would sort before a same-day receipt."""
+    t = _when(stamp)
+    return "must be a UTC datetime" if t is None else "is in the future" if t > dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=5) else None
+
+
+def analyze(data, ledger_path, folder):
+    """Read the ledger once and return what the scorer needs: counted receipts, per-pillar rubric levels, and notes."""
+    out = {"events": [], "counted": [], "signed": [], "intact": set(), "rubric": {p: 3 for p in BASE}, "best": {p: 0 for p in BASE}, "backed": {p: False for p in BASE},
+           "newest": {p: None for p in BASE}, "governing": {}, "warnings": [], "anchor": None, "legacy": False}
+    try:
+        events = gf_ledger.read_ledger(ledger_path)
+    except (OSError, ValueError):
+        return out
+    out["events"] = events
+    project = data.get("project") if isinstance(data.get("project"), dict) else {}
+    current = idea_sha(project)
+    key = gf_ledger.load_key()
+    out["anchor"] = anchor = next((e["evaluation_id"] for e in events if e.get("sig") and e.get("evaluation_id")), None)
+    try:
+        for e in receipts(events):
+            if not e.get("evaluation_id"):
+                out["legacy"] = True
+                out["warnings"].append(f"Legacy receipt {e['id']} has no evaluation binding: re-record it with `greenfield evidence add`")
+            elif e["evaluation_id"] != anchor or e.get("run_slug") != folder.name:
+                out["warnings"].append(f"Receipt {e['id']} belongs to another evaluation and does not count")
+                continue
+            elif e.get("idea_sha") != current:
+                out["warnings"].append(f"Receipt {e['id']}: receipt recorded for a different idea")
+                continue
+            out["counted"].append(e)
+            if gf_ledger.trusted_artifact(events, e, key)[0]:
+                out["signed"].append(e)
+                if gf_ledger.verified_behavior(ledger_path, e["id"])[0]:
+                    out["intact"].add(e["id"])
+        for p in BASE:
+            mine = [e for e in out["signed"] if p in e["pillar_ids"] and kind_fits(e["kind"], p)]
+            usable = [e for e in mine if e.get("result") == "fail" or e["id"] in out["intact"]]
+            if mine:
+                out["best"][p] = max(ceiling(e) for e in mine)
+                out["newest"][p] = max(e["recorded_at"] for e in mine)
+            if usable:
+                gov = max(usable, key=lambda e: (ceiling(e), e["recorded_at"]))
+                out["governing"][p] = gov
+                out["rubric"][p] = rubric(gov)
+            out["backed"][p] = any(e["id"] in out["intact"] and e.get("result") in ("pass", "mixed") and e.get("evaluation_id") and ceiling(e) >= 3 for e in mine)
+    except (KeyError, TypeError, AttributeError):  # a hand-written event with missing or wrong-typed fields
+        out["warnings"].append("Could not read every ledger receipt: malformed event")
+    return out

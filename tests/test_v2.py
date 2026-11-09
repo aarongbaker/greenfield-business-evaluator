@@ -17,7 +17,7 @@ import gf_profiles as profiles
 import gf_runs
 import gf_observe
 import gf_portfolio
-from test_skill import attest,sample,scorer
+from test_skill import attest,back_core,sample,scorer
 
 class LedgerTests(unittest.TestCase):
     def test_behavior_requires_human_and_receipt(self):
@@ -76,17 +76,11 @@ class ModelTests(unittest.TestCase):
 class SourceGateTests(unittest.TestCase):
     def test_v2_missing_source_report_blocks_pilot(self):
         with tempfile.TemporaryDirectory() as temp:
-            root=Path(temp);receipt=root/'receipt.txt';receipt.write_text('Synthetic fixture')
-            event=attest(root/'experiment-ledger.jsonl','paid_test','A','H',artifact='receipt.txt',
-                                attester='Human test',pillars=list(scorer.CORE))
-            data=sample();data['execution']['customer_validation_performed']=True
+            root=Path(temp);data=sample()
             data['claims']=[{'id':'C1','pillar':'market','classification':'fact','statement':'Test fact',
                              'source_url':'https://example.org/source','accessed_date':'2026-10-23'}]
             data['pillars']['market']['claim_ids']=['C1']
-            for p in scorer.CORE:
-                data['pillars'][p]['evidence']=3
-                data['pillars'][p]['behaviors']=[{'kind':'paid_test','description':'Fixture', 'observed_at':'2026-10-23',
-                                                 'source_or_artifact':str(receipt),'verified':True,'ledger_event_id':event['id']}]
+            back_core(root,data)
             errors,warnings=scorer.validate(data,root)
             self.assertFalse(errors,errors)
             result=scorer.score(data,warnings)

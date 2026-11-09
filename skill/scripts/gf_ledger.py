@@ -26,6 +26,8 @@ BEHAVIOR = {"customer_action", "paid_test", "signed_commitment", "repeat_purchas
 ATTESTED = BEHAVIOR | {"source_review"}
 NO_TTY = "Attested events need a person at a terminal. Run this command yourself, not through an agent."
 # Reasons that mean "not confirmed on this machine yet" rather than "forged"; the scorer downgrades instead of failing.
+# Signed intake fields a re-attestation copies unchanged, so nothing is lost or re-bound on a new machine.
+CARRIED = ('material', 'gate_ids', 'result', 'consent', 'pii', 'row_hashes', 'evaluation_id', 'run_slug', 'idea_sha', 'idea_text', 'claim_digest')
 UNCONFIRMED = ("receipt is unsigned", "signed with a different key", "no attestation key")
 
 
@@ -239,7 +241,8 @@ def reattest(path, confirm=tty_confirm):
         fields = {'observed_at': e.get('observed_at', ''), 'kind': 'reattestation', 'reattests': e['id'], 'project': e.get('project', ''),
                   'hypothesis': e.get('hypothesis', ''), 'outcome': e.get('outcome', ''), 'notes': f"re-attests {e['kind']} {e['id']}",
                   'attester': e.get('attester', ''), 'human_attested': True, 'artifact': doc, 'pillar_ids': e.get('pillar_ids', []),
-                  'claim_id': e.get('claim_id', ''), 'experiment_id': e.get('experiment_id', '')}
+                  'claim_id': e.get('claim_id', ''), 'experiment_id': e.get('experiment_id', ''),
+                  **{k: e[k] for k in CARRIED if k in e}}
         confirm({'re-confirming': f"{e['kind']} {e['id']} recorded {e.get('recorded_at', '')}", **summary_of({**fields, 'kind': e['kind']})})
         key = load_key()
         if not key:
@@ -300,12 +303,28 @@ def reviewed_claims(ledger_path, report_path):
     return out
 
 
+def _review_binding(args):
+    """Sign the reviewed claim's digest and any gate into a source review, so a rewritten claim loses both (W43)."""
+    if args.kind != 'source_review':
+        return None
+    import gf_materials
+    try:
+        data = load_json(Path(args.ledger).parent / 'evaluation.json')
+    except (OSError, ValueError):
+        data = {}
+    claim = next((c for c in data.get('claims', []) if isinstance(c, dict) and c.get('id') == args.claim_id), None)
+    gate = getattr(args, 'gate', None)
+    return {'gate_ids': [gate] if gate else [], **({'claim_digest': gf_materials.claim_digest(claim)} if claim else {})}
+
+
 def handle(args):
     """Run one parsed ledger command (record, verify, summary, reattest); return its JSON-ready result."""
     if args.command=='record':
+        if args.kind in BEHAVIOR:
+            raise GFError(f'{args.kind} is a receipt: use greenfield evidence add', hint='greenfield evidence types')
         # A typed --artifact is relative to the shell's folder; append() then requires it inside the ledger's folder.
         artifact=str(Path(args.artifact).absolute()) if args.artifact else None
-        return append(args.ledger,args.kind,args.project,args.hypothesis,args.outcome,artifact,args.attester,args.observed_at,args.notes,args.pillar,args.claim_id,args.experiment_id)
+        return append(args.ledger,args.kind,args.project,args.hypothesis,args.outcome,artifact,args.attester,args.observed_at,args.notes,args.pillar,args.claim_id,args.experiment_id,extra=_review_binding(args))
     if args.command=='reattest':
         return reattest(args.ledger)
     events=read_ledger(args.ledger)

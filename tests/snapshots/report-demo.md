@@ -19,5 +19,5 @@ As of 2026-10-23 · Profile: general · Research: live web, single-agent fallbac
 | Execution | 5 | ████░ 4 | ██░░░ 2 | SAMPLE: a small team can build an MVP. | C7 |
 | Timing | 5 | ███░░ 3 | ██░░░ 2 | SAMPLE: fuel costs keep route efficiency in focus. | C8 |
 
-**What would change this verdict:** quality 5: problem; evidence 3: problem, market, value, economics, distribution; verify sources and record a human review
+**What would change this verdict:** quality 5: problem; evidence 3: problem, market, value, economics, distribution; verify sources and record a human review; problem quality 4 has no receipt; market quality 4 has no receipt; value quality 4 has no receipt; competition quality 4 has no receipt; execution quality 4 has no receipt
 <!-- greenfield:generated end -->

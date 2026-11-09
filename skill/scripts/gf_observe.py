@@ -500,9 +500,8 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
         newest = max((s[0] for s in map(_stat, [ev, *extra]) if s), default=0)
         stale = (_stat(dec) or (0,))[0] < newest
     qs, es, d = result["quality_scores"], result["evidence_scores"], result["decision"]
-    exp = next((x for x in data.get("experiments") or [] if isinstance(x, dict)), None) if isinstance(data.get("experiments"), list) else None
-    bet = {"id": safe_text(exp.get("id"), 20), "text": safe_text(exp.get("hypothesis"), 200),
-           "pillar": exp.get("pillar") if exp.get("pillar") in qs else None} if exp and exp.get("hypothesis") else None
+    exp = result.get("next_experiment")
+    bet = {"id": safe_text(exp["id"], 20), "text": safe_text(exp["hypothesis"], 200), "pillar": exp["pillar"]} if exp else None
     rq = shlex.quote(str(ASSETS / rd) if meta.get("demo") else rd)
     rescore = f"greenfield score {rq}/evaluation.json --json --output {rq}/decision.json"
     unassessed = [p for p, q in qs.items() if q is None]
@@ -510,10 +509,6 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
         step = "Re-run the scorer to refresh decision.json"
     elif d == "RESEARCH_INCOMPLETE" and unassessed:
         step = f"{len(unassessed)} of {len(qs)} pillars unassessed: {', '.join(unassessed)}"
-    elif result["missing_pilot_gates"] and d != "NO_GO":
-        step = f"Close pilot gate {result['missing_pilot_gates'][0]}, then re-score"
-    elif bet and d == "VALIDATE_BEFORE_BUILD":
-        step = f"Run {bet['id'] or 'the first experiment'} and record the result in the ledger, then re-score"
     else:
         step = result["next_step"]
     warnings = summarize_warnings(result["warnings"])
