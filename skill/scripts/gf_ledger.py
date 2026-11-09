@@ -175,7 +175,7 @@ def _write(path, fields, key=None):
             unlock(f.fileno())
 
 
-def append(path, kind, project, hypothesis, outcome='', artifact=None, attester='', observed_at='', notes='', pillars=None, claim_id='', experiment_id='', confirm=tty_confirm):
+def append(path, kind, project, hypothesis, outcome='', artifact=None, attester='', observed_at='', notes='', pillars=None, claim_id='', experiment_id='', confirm=tty_confirm, extra=None, preview=None):
     if kind not in ALLOWED:
         raise ValueError('Invalid kind')
     if not project.strip() or not hypothesis.strip():
@@ -184,7 +184,8 @@ def append(path, kind, project, hypothesis, outcome='', artifact=None, attester=
     if attested and (not attester.strip() or not artifact):
         raise ValueError('Behavior event requires a named HUMAN attester and actual local evidence artifact')
     if observed_at:
-        dt.date.fromisoformat(observed_at)
+        if dt.date.fromisoformat(observed_at) > dt.date.today():
+            raise ValueError('observed_at is in the future')
     if kind == 'source_review' and (not claim_id or outcome not in ('supported', 'contradicted', 'unclear')):
         raise ValueError('Source review needs claim ID and outcome supported|contradicted|unclear')
     path = Path(path)
@@ -193,10 +194,10 @@ def append(path, kind, project, hypothesis, outcome='', artifact=None, attester=
               'hypothesis':hypothesis.strip(), 'outcome':outcome.strip(), 'notes':notes.strip(),
               'attester':attester.strip() if attested else '', 'human_attested': attested,
               'artifact':artifact_digest(artifact, path.parent), 'pillar_ids': sorted(set(pillars or [])), 'claim_id':claim_id,
-              'experiment_id':experiment_id}
+              'experiment_id':experiment_id, **(extra or {})}
     if not attested:
         return _write(path, fields)
-    confirm(summary_of(fields))  # before the lock, so a slow human never blocks other writers
+    confirm({**summary_of(fields), **(preview or {})})  # before the lock, so a slow human never blocks other writers
     key = load_key()
     if not key:
         raise GFError('no attestation key on this machine', path=key_path())

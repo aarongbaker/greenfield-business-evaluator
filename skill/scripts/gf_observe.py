@@ -243,6 +243,12 @@ def scaffold(project, args):
             data["project"][key] = value
     data["execution"]["mode"] = "not_started"
     data["evidence_ledger"], data["verification_report"] = "experiment-ledger.jsonl", "source-verification.json"
+    import gf_materials
+    if slug in gf_materials.RESERVED:
+        raise GFError(f"{slug} is reserved for the bundled demo", hint="greenfield start --idea '...' --slug my-idea")
+    data["evaluation_id"] = "eval-" + uuid4().hex[:8]
+    gf_materials.setup_folders(folder)
+    gf_materials.snapshot(folder, data)
     atomic_write_json(ev, data, mode=0o600)
     rid = new_run(project, args.idea, args.provider, replace=args.new, research_dir=folder)
     if not args.no_plan:

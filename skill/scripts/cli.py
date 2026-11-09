@@ -22,6 +22,7 @@ import gf_observe  # noqa: E402
 import gf_guard  # noqa: E402
 from gf_ledger import ALLOWED as LEDGER_KINDS  # noqa: E402
 import gf_profiles  # noqa: E402
+import gf_materials  # noqa: E402
 from gf_profiles import PROFILES  # noqa: E402
 
 PLATFORMS = ("claude", "codex", "both")
@@ -432,6 +433,8 @@ def build_parser():
     p.add_argument("--allow-network", action="store_true", help="fetch PUBLIC pages; off by default")
     p.add_argument("--stale-days", type=int, default=730, help="sources older than this are flagged (default 730)")
 
+    gf_materials.register(sub, _cmd, _group, _ctx)
+
     ledger = _group(sub, "ledger", "record and verify the hash-chained experiment ledger", [
         "greenfield ledger verify --ledger experiment-ledger.jsonl", "greenfield ledger summary --ledger experiment-ledger.jsonl"])
     p = _cmd(ledger, "record", "append one event (receipts need a person at a terminal)", [
@@ -449,6 +452,7 @@ def build_parser():
     p.add_argument("--notes", default="", help="free-text notes")
     p.add_argument("--pillar", action="append", default=[], help="pillar this evidence supports (repeatable)")
     p.add_argument("--claim-id", default="", help="claim id, for source reviews")
+    p.add_argument("--gate", choices=sorted(gf_profiles.GATE_HELP), help="pilot gate a source review is for")
     p.add_argument("--experiment-id", default="", help="experiment id")
     for name, help in (("verify", "check the hash chain (exit 1 if broken)"), ("summary", "count events and check behavior receipts"),
                        ("reattest", "interactively re-confirm unsigned attested events")):
