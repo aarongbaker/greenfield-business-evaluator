@@ -194,7 +194,7 @@ class HookInstallerTests(unittest.TestCase):
         self.assertEqual(self.invoke("remove").returncode, 0)
         cleaned = json.loads(path.read_text())
         self.assertEqual(cleaned, unrelated)
-        self.assertEqual(json.loads(cp.read_text()), {})
+        self.assertFalse(cp.exists())
 
     def _events(self, rel):
         return set(json.loads((self.root / rel).read_text())["hooks"])
@@ -240,9 +240,11 @@ class HookInstallerTests(unittest.TestCase):
         path = self.root / ".codex/hooks.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("invalid json")
+        claude = self.root / ".claude/settings.local.json"
+        before = claude.read_bytes() if claude.exists() else None
         proc = self.invoke("install")
         self.assertNotEqual(proc.returncode, 0)
-        self.assertFalse((self.root / ".claude/settings.local.json").exists())
+        self.assertEqual(claude.read_bytes() if claude.exists() else None, before)
 
 
 class ActiveRunTests(unittest.TestCase):

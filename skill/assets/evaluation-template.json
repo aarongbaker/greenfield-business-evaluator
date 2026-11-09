@@ -1,4 +1,5 @@
 {
+  "evaluation_id": "eval-template",
   "project": {
     "name": "REPLACE_PROJECT_NAME",
     "idea": "REPLACE_WITH_ONE_SENTENCE_IDEA",

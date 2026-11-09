@@ -19,5 +19,5 @@ As of 2026-10-23 · Profile: general · Research: live web, single-agent fallbac
 | Execution | 5 | ████░ 4 | █░░░░ 1 | Not evaluated (gap) |  |
 | Timing | 5 | ████░ 4 | █░░░░ 1 | Not evaluated (gap) |  |
 
-**What would change this verdict:** evidence 3: problem, market, value, economics, distribution
+**What would change this verdict:** evidence 3: problem, market, value, economics, distribution; problem quality 4 has no receipt; market quality 4 has no receipt; value quality 4 has no receipt; economics quality 4 has no receipt; distribution quality 4 has no receipt; competition quality 4 has no receipt; execution quality 4 has no receipt; timing quality 4 has no receipt
 <!-- greenfield:generated end -->

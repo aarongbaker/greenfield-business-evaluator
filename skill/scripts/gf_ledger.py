@@ -20,12 +20,16 @@ import uuid
 
 from gf_common import old_entry, GFError, VERSION, atomic_write, load_json, resolve_inside
 from gf_platform import lock_exclusive, require_locking, unlock
+from gf_profiles import BASE
 
 ALLOWED = {"hypothesis", "customer_interview", "customer_action", "paid_test", "signed_commitment", "repeat_purchase", "feasibility_proof", "experiment_result", "decision_revision", "failure", "note", "source_review"}
+LEDGER_NAME = 'experiment-ledger.jsonl'
 BEHAVIOR = {"customer_action", "paid_test", "signed_commitment", "repeat_purchase", "feasibility_proof"}
 ATTESTED = BEHAVIOR | {"source_review"}
 NO_TTY = "Attested events need a person at a terminal. Run this command yourself, not through an agent."
 # Reasons that mean "not confirmed on this machine yet" rather than "forged"; the scorer downgrades instead of failing.
+# Signed intake fields a re-attestation copies unchanged, so nothing is lost or re-bound on a new machine.
+CARRIED = ('material', 'gate_ids', 'result', 'consent', 'pii', 'row_hashes', 'evaluation_id', 'run_slug', 'idea_sha', 'idea_text', 'claim_digest')
 UNCONFIRMED = ("receipt is unsigned", "signed with a different key", "no attestation key")
 
 
@@ -175,7 +179,7 @@ def _write(path, fields, key=None):
             unlock(f.fileno())
 
 
-def append(path, kind, project, hypothesis, outcome='', artifact=None, attester='', observed_at='', notes='', pillars=None, claim_id='', experiment_id='', confirm=tty_confirm):
+def append(path, kind, project, hypothesis, outcome='', artifact=None, attester='', observed_at='', notes='', pillars=None, claim_id='', experiment_id='', confirm=tty_confirm, extra=None, preview=None):
     if kind not in ALLOWED:
         raise ValueError('Invalid kind')
     if not project.strip() or not hypothesis.strip():
@@ -184,7 +188,8 @@ def append(path, kind, project, hypothesis, outcome='', artifact=None, attester=
     if attested and (not attester.strip() or not artifact):
         raise ValueError('Behavior event requires a named HUMAN attester and actual local evidence artifact')
     if observed_at:
-        dt.date.fromisoformat(observed_at)
+        if dt.date.fromisoformat(observed_at) > dt.date.today():
+            raise ValueError('observed_at is in the future')
     if kind == 'source_review' and (not claim_id or outcome not in ('supported', 'contradicted', 'unclear')):
         raise ValueError('Source review needs claim ID and outcome supported|contradicted|unclear')
     path = Path(path)
@@ -193,10 +198,10 @@ def append(path, kind, project, hypothesis, outcome='', artifact=None, attester=
               'hypothesis':hypothesis.strip(), 'outcome':outcome.strip(), 'notes':notes.strip(),
               'attester':attester.strip() if attested else '', 'human_attested': attested,
               'artifact':artifact_digest(artifact, path.parent), 'pillar_ids': sorted(set(pillars or [])), 'claim_id':claim_id,
-              'experiment_id':experiment_id}
+              'experiment_id':experiment_id, **(extra or {})}
     if not attested:
         return _write(path, fields)
-    confirm(summary_of(fields))  # before the lock, so a slow human never blocks other writers
+    confirm({**summary_of(fields), **(preview or {})})  # before the lock, so a slow human never blocks other writers
     key = load_key()
     if not key:
         raise GFError('no attestation key on this machine', path=key_path())
@@ -238,7 +243,8 @@ def reattest(path, confirm=tty_confirm):
         fields = {'observed_at': e.get('observed_at', ''), 'kind': 'reattestation', 'reattests': e['id'], 'project': e.get('project', ''),
                   'hypothesis': e.get('hypothesis', ''), 'outcome': e.get('outcome', ''), 'notes': f"re-attests {e['kind']} {e['id']}",
                   'attester': e.get('attester', ''), 'human_attested': True, 'artifact': doc, 'pillar_ids': e.get('pillar_ids', []),
-                  'claim_id': e.get('claim_id', ''), 'experiment_id': e.get('experiment_id', '')}
+                  'claim_id': e.get('claim_id', ''), 'experiment_id': e.get('experiment_id', ''),
+                  **{k: e[k] for k in CARRIED if k in e}}
         confirm({'re-confirming': f"{e['kind']} {e['id']} recorded {e.get('recorded_at', '')}", **summary_of({**fields, 'kind': e['kind']})})
         key = load_key()
         if not key:
@@ -289,24 +295,77 @@ def reviewed_claims(ledger_path, report_path):
     report = artifact_digest(report_file, base)
     records = read_ledger(ledger_path)
     key = load_key()
-    report_ids = {c.get('claim_id') for c in load_json(report_file).get('claims',[])}
+    entries = {c.get('claim_id'): c for c in load_json(report_file).get('claims',[])}
+    try:
+        claims = {c.get('id'): c for c in load_json(base / 'evaluation.json').get('claims', []) if isinstance(c, dict)}
+    except (OSError, ValueError, AttributeError):
+        claims = {}
+    anchor = next((e['evaluation_id'] for e in records if e.get('sig') and e.get('evaluation_id')), None)
     out = {}
+    import gf_evidence
     for e in records:
-        if e['kind'] == 'source_review' and e['human_attested'] and e.get('artifact') and e['claim_id'] in report_ids:
+        if e['kind'] == 'source_review' and e['human_attested'] and e.get('artifact') and e['claim_id'] in entries:
+            if e.get('evaluation_id') and (e['evaluation_id'] != anchor or e.get('run_slug') != base.resolve().name):
+                continue
             meta, _ = trusted_artifact(records, e, key)
-            if meta and meta['sha256'] == report['sha256']:
+            if not meta:
+                continue
+            entry, claim = entries[e['claim_id']], claims.get(e['claim_id'], {})
+            # Bound to its own entry, so re-checks and other claims' edits leave it valid; older reviews bind to the whole report.
+            bound = (e['entry_digest'] == gf_evidence.entry_digest(entry, claim) and not gf_evidence.entry_problem(entry, claim, key)) if e.get('entry_digest') else meta['sha256'] == report['sha256']
+            if bound:
                 out[e['claim_id']] = e['outcome']
     return out
+
+
+def _review_binding(args):
+    """Sign the reviewed claim's digest and any gate into a source review, so a rewritten claim loses both (W43)."""
+    if args.kind != 'source_review':
+        return None
+    import gf_materials
+    try:
+        data = load_json(Path(args.ledger).parent / 'evaluation.json')
+    except (OSError, ValueError):
+        data = {}
+    claim = next((c for c in data.get('claims', []) if isinstance(c, dict) and c.get('id') == args.claim_id), None)
+    gate = getattr(args, 'gate', None)
+    out = {'gate_ids': [gate] if gate else []}
+    if claim:
+        import gf_evidence
+        try:
+            entry = next((c for c in load_json(args.artifact).get('claims', []) if c.get('claim_id') == args.claim_id), None)
+        except (OSError, ValueError, TypeError, AttributeError):
+            entry = None
+        if not entry or gf_evidence.entry_problem(entry, claim, load_key()):
+            raise GFError(f'{args.claim_id}: not produced by greenfield sources check', hint='greenfield sources check')
+        out.update(claim_digest=gf_materials.claim_digest(claim), entry_digest=gf_evidence.entry_digest(entry, claim), **gf_materials.binding(data, Path(args.ledger).parent))
+    return out
+
+
+def _project_label(args):
+    """--project-name is a label only: binding is the signed evaluation_id, run_slug and idea_sha."""
+    if args.project:
+        return args.project
+    try:
+        return load_json(Path(args.ledger).parent / 'evaluation.json')['project']['name'] or Path(args.ledger).resolve().parent.name
+    except (OSError, ValueError, KeyError, TypeError):
+        return Path(args.ledger).resolve().parent.name
 
 
 def handle(args):
     """Run one parsed ledger command (record, verify, summary, reattest); return its JSON-ready result."""
     if args.command=='record':
+        if args.kind in BEHAVIOR:
+            raise GFError(f'{args.kind} is a receipt: use greenfield evidence add', hint='greenfield evidence types')
         # A typed --artifact is relative to the shell's folder; append() then requires it inside the ledger's folder.
         artifact=str(Path(args.artifact).absolute()) if args.artifact else None
-        return append(args.ledger,args.kind,args.project,args.hypothesis,args.outcome,artifact,args.attester,args.observed_at,args.notes,args.pillar,args.claim_id,args.experiment_id)
+        hypothesis=args.hypothesis or (f'source review {args.claim_id}' if args.kind=='source_review' else '')
+        return append(args.ledger,args.kind,_project_label(args),hypothesis,args.outcome,artifact,args.attester,args.observed_at,args.notes,args.pillar,args.claim_id,args.experiment_id,extra=_review_binding(args))
     if args.command=='reattest':
         return reattest(args.ledger)
+    if args.command=='reidea':
+        import gf_materials
+        return gf_materials.reidea(args.ledger)
     events=read_ledger(args.ledger)
     value={'valid':True,'events':len(events),'last_hash':events[-1]['hash'] if events else 'GENESIS'}
     if args.command=='summary':
@@ -323,19 +382,20 @@ def main(argv=None):
     p=sub.add_parser('record')
     p.add_argument('--ledger',required=True)
     p.add_argument('--kind',required=True,choices=sorted(ALLOWED))
-    p.add_argument('--project',required=True)
-    p.add_argument('--hypothesis',required=True)
+    p.add_argument('--project',default='')
+    p.add_argument('--hypothesis',default='')
     p.add_argument('--outcome',default='')
     p.add_argument('--artifact')
     p.add_argument('--attester',default='')
     p.add_argument('--observed-at',default='')
     p.add_argument('--notes',default='')
-    p.add_argument('--pillar',action='append',default=[])
+    p.add_argument('--pillar',action='append',default=[],choices=sorted(BASE))
     p.add_argument('--claim-id',default='')
     p.add_argument('--experiment-id',default='')
     v=sub.add_parser('verify');v.add_argument('--ledger',required=True)
     s=sub.add_parser('summary');s.add_argument('--ledger',required=True)
     r=sub.add_parser('reattest',help='interactively re-confirm unsigned attested events');r.add_argument('--ledger',required=True)
+    i=sub.add_parser('reidea',help='carry receipts across a typo-sized edit of the idea');i.add_argument('--ledger',required=True)
     args=ap.parse_args(argv)
     try:
         print(json.dumps(handle(args),indent=2))

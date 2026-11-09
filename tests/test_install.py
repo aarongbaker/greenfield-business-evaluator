@@ -28,6 +28,14 @@ def run(*argv):
 
 
 class InstallTests(unittest.TestCase):
+    def test_project_install_adds_guard_unless_opted_out(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(run("--project", d, "--platform", "claude", "--no-gitignore")[0], 0)
+            self.assertIn("hook guard", (pathlib.Path(d) / ".claude/settings.local.json").read_text())
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(run("--project", d, "--platform", "claude", "--no-gitignore", "--no-guard")[0], 0)
+            self.assertFalse((pathlib.Path(d) / ".claude/settings.local.json").exists())
+
     def setUp(self):
         t = tempfile.TemporaryDirectory()
         self.addCleanup(t.cleanup)

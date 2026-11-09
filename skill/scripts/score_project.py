@@ -14,9 +14,10 @@ import re
 import sys
 import textwrap
 from urllib.parse import urlparse
-from gf_profiles import BASE, PROFILES
+from gf_profiles import BASE, GATE_HELP, PROFILES
 from gf_common import old_entry, GFError, VERSION, atomic_write, finite_nonneg, load_json, report, resolve_inside
 from gf_ledger import UNCONFIRMED, verified_behavior, reviewed_claims
+import gf_materials
 
 PILLAR_WEIGHTS = BASE
 CORE = ("problem", "market", "value", "economics", "distribution")
@@ -26,7 +27,7 @@ SUPPORTED_SCHEMA = "2.0"
 # The one verdict label table: scorer text, portfolio, dashboard and DECISION.md all read it.
 VERDICTS = {
     "PROCEED_TO_BOUNDED_PILOT": {"label": "Proceed to bounded pilot", "tone": "good", "meaning": "Core gates met. Pilot only, not scale."},
-    "VALIDATE_BEFORE_BUILD": {"label": "Validate before build", "tone": "warn", "meaning": "Run the next experiment before writing code."},
+    "VALIDATE_BEFORE_BUILD": {"label": "Validate before build", "tone": "warn", "meaning": "Test with real customers before writing code; stop or reframe if tested findings stay below the bar."},
     "PIVOT": {"label": "Pivot", "tone": "warn", "meaning": "Evidence shows a severe core weakness."},
     "NO_GO": {"label": "No go", "tone": "bad", "meaning": "A confirmed fatal blocker overrides the score."},
     "RESEARCH_INCOMPLETE": {"label": "Research incomplete", "tone": "neutral", "meaning": "Not a launch decision yet."},
@@ -81,8 +82,13 @@ def nonneg_ok(v):
         return False
 
 
+class Warnings(list):
+    """validate() warnings, carrying the ledger facts to score() so the evaluation dict is never touched."""
+    facts = {}
+
+
 def validate(data, base_dir=None):
-    errors, warnings = [], []
+    errors, warnings = [], Warnings()
     if not isinstance(data, dict):
         return ["Evaluation must be a JSON object"], []
     version = data.get("schema_version")
@@ -102,6 +108,13 @@ def validate(data, base_dir=None):
             except GFError as exc:
                 errors.append(f'{key} must stay inside the evaluation folder: {exc}')
     ledger_path, report_path = paths.get('evidence_ledger'), paths.get('verification_report')
+    for key, name in (('evidence_ledger', 'experiment-ledger.jsonl'), ('verification_report', 'source-verification.json')):
+        if path_str(data.get(key)) and data[key] != name:
+            errors.append(f'{key} must be {name} in the evaluation folder')
+    facts = gf_materials.analyze(data, ledger_path, base_dir) if ledger_path else gf_materials.analyze(data, base_dir / 'experiment-ledger.jsonl', base_dir)
+    warnings.facts = facts
+    warnings.extend(facts['warnings'])
+    signed_for = lambda p: any(p in x['pillar_ids'] for x in facts['signed'])
 
     def receipt_ok(evid, pillar=None):
         if not ledger_path:
@@ -183,6 +196,9 @@ def validate(data, base_dir=None):
             errors.append(path + ": facts require source_url or artifact_path")
         if source_url and not has_http_url(source_url):
             errors.append(path + ".source_url must be an HTTP(S) URL")
+        if kind == "fact" and nonempty_str(artifact) and not any(
+                x['artifact']['path'] == artifact and x['id'] in facts['intact'] and claim.get('pillar') in x['pillar_ids'] for x in facts['counted']):
+            errors.append(f"{path}: artifact_path {short(artifact)} has no attested receipt for {short(claim.get('pillar'))}: run greenfield evidence add")
         if kind == "estimate" and not nonempty_str(claim.get("notes")):
             warnings.append(path + ": estimate has no documented formula in notes")
         if kind == "assumption" and source_url:
@@ -215,14 +231,34 @@ def validate(data, base_dir=None):
         for j, behavior in enumerate(behaviors):
             if not isinstance(behavior, dict) or not all(nonempty_str(behavior.get(k)) for k in ("kind", "description", "observed_at", "source_or_artifact")):
                 errors.append(f"pillars.{p}.behaviors[{j}] must include kind, description, observed_at, source_or_artifact")
-        if type(e) is int and e >= 3 and not any(isinstance(b, dict) and b.get("verified") is True and nonempty_str(b.get("source_or_artifact")) for b in behaviors):
+        if nonempty_str(item.get("assessed_at")) and gf_materials.assessed_problem(item["assessed_at"]):
+            errors.append(f"pillars.{p}.assessed_at {gf_materials.assessed_problem(item['assessed_at'])}: run greenfield evidence assessed {p}")
+        by_id = {x['id']: x for x in facts['events']}
+        for b in behaviors:
+            if isinstance(b, dict) and b.get('ledger_event_id') is not None and not isinstance(b['ledger_event_id'], str):
+                errors.append(f'pillars.{p}: ledger_event_id must be a string')
+            linked = by_id.get(b.get('ledger_event_id')) if isinstance(b, dict) and isinstance(b.get('ledger_event_id'), str) else None
+            if not linked or linked.get('kind') not in gf_materials.KIND_CEILING:
+                continue
+            if not gf_materials.kind_fits(linked['kind'], p):
+                errors.append(f"pillars.{p}: {linked['id']} is {linked['kind']}, which cannot back {p}")
+            if linked.get('material') in gf_materials.MATERIALS and p not in gf_materials.MATERIALS[linked['material']][2]:
+                errors.append(f"pillars.{p}: {linked['id']} is {linked['material']}, which cannot back {p}")
+            if b.get('kind') != linked['kind']:
+                errors.append(f"pillars.{p}.behaviors kind is {short(b.get('kind'))} but {linked['id']} was recorded as {linked['kind']}")
+        if type(e) is int and e >= 3 and signed_for(p) and e > facts['best'][p]:
+            errors.append(f"pillars.{p}: evidence {e} is above what its receipts support ({facts['best'][p]})")
+        if type(e) is int and e >= 3 and not signed_for(p) and not any(isinstance(b, dict) and b.get("verified") is True and nonempty_str(b.get("source_or_artifact")) for b in behaviors):
             errors.append(f"pillars.{p}: evidence >=3 requires a verified documented observed behavior")
         if is_v2 and type(e) is int and e >= 3:
             ledger_name = data.get('evidence_ledger')
             if not path_str(ledger_name):
                 errors.append(f"pillars.{p}: v2 evidence >=3 requires evidence_ledger path")
             elif ledger_path and not any(isinstance(b, dict) and nonempty_str(b.get('ledger_event_id')) and receipt_ok(b['ledger_event_id'], p) for b in behaviors):
-                errors.append(f"pillars.{p}: evidence >=3 must reference an intact human-attested behavioral ledger receipt for this pillar")
+                if signed_for(p):  # the signed result still counts; it just cannot support Proceed
+                    warnings.append(f"pillars.{p}: its receipt is unlinked or its file changed, so it cannot support a pilot")
+                else:
+                    errors.append(f"pillars.{p}: evidence >=3 must reference an intact human-attested behavioral ledger receipt for this pillar")
         if type(e) is int and e >= 3 and not execution.get("customer_validation_performed") and p in ("problem", "value", "distribution", "economics"):
             warnings.append(f"pillars.{p}: strong claimed behavior but customer_validation_performed=false; investigate")
         if not ids:
@@ -287,6 +323,7 @@ def validate(data, base_dir=None):
         for claim in claims:
             if isinstance(claim,dict) and claim.get('classification')=='fact' and claim.get('source_url') and member(claim.get('id'),referenced) and review_map.get(claim['id'])!='supported':
                 warnings.append('Unreviewed public source claim: '+claim['id'])
+    closed = {}
     if is_v2 and isinstance(data.get('pilot_gates',{}),dict):
         for gate in PROFILES[profile]['pilot_gates']:
             entry=data.get('pilot_gates',{}).get(gate)
@@ -300,12 +337,107 @@ def validate(data, base_dir=None):
                     if isinstance(evid,str) and evid.startswith('EV-'):
                         if not receipt_ok(evid):
                             errors.append(f'pilot_gates.{gate}: behavioral ledger receipt invalid {short(evid)}')
+                        else:
+                            errors.extend(f'pilot_gates.{gate}: {m}' for m in gate_receipt_problems(evid, gate, facts, closed))
                     elif not isinstance(evid,str) or review_map.get(evid)!='supported':
                         errors.append(f'pilot_gates.{gate}: claim {short(evid)} must have an intact human source review')
+                    else:
+                        if 'claim' not in GATE_HELP[gate]['accepts']:
+                            errors.append(f'pilot_gates.{gate}: accepts no claim; link a receipt')
+                        elif not gf_materials.claim_closes_gate(claim_by_id.get(evid, {}), gate, facts['events']):
+                            errors.append(f'pilot_gates.{gate}: claim {evid} needs a current source review naming {gate}')
+                        if evid in closed:
+                            errors.append(f'pilot_gates.{gate}: {evid} already closes {closed[evid]}: one id closes one gate')
+                        closed[evid] = gate
+    errors.extend(gf_materials.reuse_errors(facts['counted']))
+    anchor, own = facts['anchor'], data.get('evaluation_id')
+    has_signed = any(x.get('sig') for x in facts['events'])
+    if anchor and own and anchor != own:
+        errors.append(f"evaluation_id {short(own)} differs from the ledger's {anchor}")
+    elif not own and has_signed:
+        errors.append('evaluation_id is missing: run greenfield evidence init')
+    elif not own:
+        warnings.append('evaluation_id is missing: run greenfield evidence init')
+    linked_ids = {b.get('ledger_event_id') for item in pillars.values() if isinstance(item, dict) and isinstance(item.get('behaviors'), list) for b in item['behaviors'] if isinstance(b, dict) and isinstance(b.get('ledger_event_id'), str)}
+    for x in facts['counted']:
+        for p in x['pillar_ids']:
+            if x['id'] not in linked_ids and gf_materials.kind_fits(x['kind'], p):
+                warnings.append(f"Ledger receipt {x['id']} for {p} is not linked from evaluation.json")
     return errors, warnings
 
 
+def gate_receipt_problems(evid, gate, facts, closed):
+    """Why this receipt cannot close this gate (Decision 3), and record that it closes it."""
+    event = next((x for x in facts['counted'] if x['id'] == evid), None)
+    if event is None:
+        return [f'{evid} does not belong to this evaluation']
+    out = []
+    if event['kind'] not in GATE_HELP[gate]['accepts']:
+        out.append(f"does not accept {event['kind']}")
+    if event.get('material') in gf_materials.MATERIALS and gate not in gf_materials.MATERIALS[event['material']][3]:
+        out.append(f"{event['material']} cannot close it")
+    if event.get('gate_ids') and gate not in event['gate_ids']:
+        out.append(f'{evid} was recorded for {", ".join(event["gate_ids"])}')
+    if event.get('result') != 'pass':
+        out.append(f"{evid} came back {event.get('result') or 'with no result'}: it cannot close {gate}")
+    for other, other_gate in closed.items():
+        if other_gate == gate:
+            continue
+        prior = next((x for x in facts['counted'] if x['id'] == other), None)
+        if other == evid or (prior and gf_materials._same_artifact(prior, event)):
+            out.append(f'{evid} already closes {other_gate}: one file closes one gate')
+    closed[evid] = gate
+    return out
+
+
+def proceed_problems(data, qs, facts):
+    """Unmet receipt rules for Proceed (W42), as gap items; empty when every quality is backed."""
+    rubric, backed, newest = facts.get('rubric', {}), facts.get('backed', {}), facts.get('newest', {})
+    out = []
+    for p, q in qs.items():
+        level = rubric.get(p, 3)
+        if q is not None and q > level:
+            text = f"{p} quality {q} has no receipt" if newest.get(p) is None else f"{p} quality {q} is above its rubric level {level}"
+            out.append({"key": f"rubric:{p}", "text": text})
+        if q is not None and (p in CORE or q > 3) and newest.get(p):
+            when = gf_materials._when((data['pillars'][p].get('assessed_at') or ''))
+            if when is None or when <= gf_materials._when(newest[p]):
+                out.append({"key": f"assess:{p}", "pillar": p, "text": f"re-assess {p}"})
+    for p in CORE:
+        if not backed.get(p) and data['pillars'][p]['evidence'] >= 3:
+            out.append({"key": f"backed:{p}", "text": f"{p} needs an intact passing or mixed receipt"})
+    return out
+
+
+def failed_core(facts):
+    """Core pillars whose governing receipt, at evidence 3 or more, came back fail (W41)."""
+    gov = facts.get('governing', {})
+    return [p for p in CORE if p in gov and gov[p].get('result') == 'fail' and gf_materials.ceiling(gov[p]) >= 3]
+
+
+def failed_gates(facts, missing):
+    """Open gates whose newest receipt naming them came back fail (W41)."""
+    out = []
+    for gate in missing:
+        named = [x for x in facts.get('signed', []) if gate in (x.get('gate_ids') or [])]
+        if named and max(named, key=lambda x: x['recorded_at']).get('result') == 'fail':
+            out.append(gate)
+    return out
+
+
+def next_experiment(result, data):
+    """First experiment with a pillar still missing core evidence, with that pillar; or None (W50 replaces this rule)."""
+    gaps = result["missing_core_behavior_evidence"]
+    for exp in data.get("experiments") or []:
+        if isinstance(exp, dict) and nonempty_str(exp.get("hypothesis")):
+            hit = [p for p in gf_materials.exp_pillars(exp) if p in gaps]
+            if hit:
+                return {"id": exp.get("id") or "the next experiment", "pillar": hit[0], "hypothesis": exp["hypothesis"]}
+    return None
+
+
 def score(data, warnings):
+    facts = getattr(warnings, 'facts', {})
     # Contract: only call after validate(data) returned no errors (main() and score_file() do).
     pillars = data["pillars"]
     qs = {p: pillars[p].get("quality") for p in PILLAR_WEIGHTS}  # missing quality == null
@@ -323,7 +455,8 @@ def score(data, warnings):
     missing_gates = [gate for gate in profile['pilot_gates'] if not (isinstance(data.get('pilot_gates',{}).get(gate),dict)
                      and data['pilot_gates'][gate].get('passed') is True
                      and data['pilot_gates'][gate].get('evidence_ids'))]
-    unconfirmed = any('ledger reattest' in w for w in warnings)
+    unconfirmed = any('ledger reattest' in w or w.startswith('Legacy receipt') for w in warnings)
+    receipt_gaps = proceed_problems(data, qs, facts) if complete else []
     source_risk = bool(data.get('claims') and
                        (not data.get('verification_report') or any('Unreviewed public source claim' in w or 'Could not validate source review ledger/report' in w for w in warnings)))
     if fatal:
@@ -335,7 +468,7 @@ def score(data, warnings):
     elif total < 50 and any(qs[p] <= 1 and ev[p] >= 3 for p in CORE):
         decision = "PIVOT"
         reason = "Low weighted attractiveness plus behavior-backed evidence of a severe core weakness."
-    elif total >= 75 and not possible_fatal and not missing_gates and not source_risk and not unconfirmed and all(qs[p] >= 3 and ev[p] >= 3 for p in CORE):
+    elif total >= 75 and not possible_fatal and not missing_gates and not source_risk and not unconfirmed and not receipt_gaps and all(qs[p] >= 3 and ev[p] >= 3 for p in CORE):
         decision = "PROCEED_TO_BOUNDED_PILOT"
         reason = "All five core pillars meet conservative attractiveness and evidence gates; pilot only, not scale."
     else:
@@ -373,9 +506,13 @@ def score(data, warnings):
         "web_research_performed": web,
         "subagents_actual": data["execution"]["subagents_actual"],
         "warnings": sorted(set(warnings)),
+        "receipt_gaps": receipt_gaps,
+        "failed_core": failed_core(facts),
+        "failed_gates": failed_gates(facts, missing_gates),
         "deprecated_fields": DEPRECATED_FIELDS,
         "disclaimer": "Heuristic triage, not a probability of commercial success or legal approval."
     }
+    result["next_experiment"] = next_experiment(result, data)
     result["headline"] = headline(result, data)
     result["next_step"] = next_step(result, data)
     return result
@@ -410,26 +547,45 @@ def headline(result, data):
         text = "All five core pillars clear the evidence gates: run a bounded pilot"
     elif result["unresolved_plausible_fatal_blockers"]:
         text = "Plausible fatal blocker unresolved: " + ", ".join(result["unresolved_plausible_fatal_blockers"])
+    elif result["failed_core"]:
+        text = f"A tested core assumption failed on {names(result['failed_core'])}: stop or reframe"
+    elif result["failed_gates"]:
+        text = f"{result['failed_gates'][0]} came back fail: change the plan and retest it, or stop or reframe"
     elif result["missing_core_behavior_evidence"]:
         thin = sorted(result["missing_core_behavior_evidence"], key=lambda p: ev[p])[:2]
         text = f"Evidence is thin on {names(thin)}: test {'these' if len(thin) > 1 else 'it'} before building"
+    elif any("ledger reattest" in w for w in result["warnings"]):
+        text = "Ledger receipts are not confirmed on this machine: re-attest before a pilot"
+    elif any(w.startswith("Legacy receipt") for w in result["warnings"]):
+        text = "Older receipts have no evaluation binding: re-record them before a pilot"
+    elif _to_assess(result):
+        text = "Re-assess findings from your new receipts, then re-score"
     elif any(qs[p] < 3 for p in CORE):
         text = f"Quality is weak on {names(p for p in CORE if qs[p] < 3)}: fix the offer before a pilot"
     elif result["missing_pilot_gates"]:
         text = "Pilot gates unmet: " + ", ".join(result["missing_pilot_gates"])
     elif result["source_review_pending"]:
         text = "Public citations need a human source review before a pilot"
-    elif any("ledger reattest" in w for w in result["warnings"]):
-        text = "Ledger receipts are not confirmed on this machine: re-attest before a pilot"
+    elif result["receipt_gaps"]:
+        text = "Quality runs ahead of the receipts: " + result["receipt_gaps"][0]["text"]
     else:
         text = f"Weighted quality {result['weighted_quality_0_to_100']}/100 is below the 75 pilot bar"
     return clip(text, 90)
 
 
+def _to_assess(result):
+    return [g["pillar"] for g in result.get("receipt_gaps", []) if g["key"].startswith("assess:")]
+
+
+def _experiment_step(nxt):
+    short_form = f"Run {nxt['id']} for {nxt['pillar']}, record it with greenfield evidence add, then re-score."
+    long_form = f"Run {nxt['id']} for {nxt['pillar']} ({nxt['hypothesis']}), record it with greenfield evidence add, then re-score."
+    return long_form if len(long_form) <= 200 else short_form
+
+
 def next_step(result, data):
     """One imperative sentence: the single next thing to do for this verdict."""
     d, qs = result["decision"], result["quality_scores"]
-    first = next(iter(data.get("experiments") or []), None)
     if d == "NO_GO":
         return f"Do not build; revisit only if new sourced evidence resolves blocker {result['confirmed_fatal_blockers'][0]}."
     if d == "RESEARCH_INCOMPLETE":
@@ -440,14 +596,24 @@ def next_step(result, data):
         return "Reframe the idea around the weak core pillar and evaluate it as a new evaluation.json."
     if d == "PROCEED_TO_BOUNDED_PILOT":
         return "Run a bounded pilot against its pre-committed thresholds; do not scale yet."
-    if isinstance(first, dict) and nonempty_str(first.get("hypothesis")):
-        return clip(f"Run {first.get('id') or 'the first experiment'} ({first['hypothesis']}), "
-                    "record the result with `greenfield ledger record`, then re-score.", 200)
     if result["unresolved_plausible_fatal_blockers"]:
         return f"Confirm or resolve blocker {result['unresolved_plausible_fatal_blockers'][0]} with sourced evidence, then re-score."
+    if result["failed_core"]:
+        return 'Your experiments ran and the findings stay below the bar; stop, or reframe with greenfield start --new --idea "<new framing>".'
+    if result["failed_gates"]:
+        return f"{result['failed_gates'][0]} came back fail: change the plan and retest it, or stop or reframe."
+    nxt = result.get("next_experiment")
     if result["missing_core_behavior_evidence"]:
+        if nxt:
+            return _experiment_step(nxt)
         p = min(result["missing_core_behavior_evidence"], key=lambda p: result["evidence_scores"][p])
-        return f"Record a paid-test result for {p} with `greenfield ledger record`, then re-score."
+        return f"Test {p} with real customers, record it with `greenfield evidence add`, then re-score."
+    if any("ledger reattest" in w for w in result["warnings"]):
+        return "Re-confirm your receipts with `greenfield ledger reattest`, then re-score."
+    if any(w.startswith("Legacy receipt") for w in result["warnings"]):
+        return "Re-record older receipts with `greenfield evidence add`, then re-score."
+    if _to_assess(result):
+        return f"Re-assess findings from your new receipts, run `greenfield evidence assessed {' '.join(_to_assess(result))}`, then re-score."
     if result["missing_pilot_gates"]:
         return f"Link reviewed evidence to pilot gate {result['missing_pilot_gates'][0]}, then re-score."
     if result["source_review_pending"]:
@@ -483,7 +649,7 @@ def verdict_gap(result):
         out.append({"key": "source_review", "text": f"review {n} source{'s' * (n != 1)}" if n else "verify sources and record a human review"})
     if any("ledger reattest" in w for w in result["warnings"]):
         out.append({"key": "reattest", "text": "re-attest ledger receipts on this machine"})
-    return out
+    return out + result.get("receipt_gaps", [])
 
 
 def gap_text(gap):

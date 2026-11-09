@@ -16,7 +16,11 @@ timing          5  ████░ 4         █░░░░ 1
   • Could not validate source review ledger/report: source-verification.json do…
   • No actual subagents recorded: use 'single-agent fallback', not 'parallel fa…
   • 8 pillars have no linked claims: competition, distribution, economics, exec…
-To reach Proceed: evidence 3: problem, market, value, economics, distribution
-Next: Record a paid-test result for problem with `greenfield ledger record`,
-      then re-score.
+To reach Proceed: evidence 3: problem, market, value, economics, distribution;
+  problem quality 4 has no receipt; market quality 4 has no receipt; value
+  quality 4 has no receipt; economics quality 4 has no receipt; distribution
+  quality 4 has no receipt; competition quality 4 has no receipt; execution
+  quality 4 has no receipt; timing quality 4 has no receipt
+Next: Test problem with real customers, record it with `greenfield evidence
+      add`, then re-score.
 Heuristic triage, not a probability of commercial success.

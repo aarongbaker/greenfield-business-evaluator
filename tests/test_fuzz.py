@@ -20,6 +20,8 @@ SCRIPTS = ROOT / 'skill' / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
 import gf_ledger
 import score_project as scorer
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_skill import back_core
 
 ITERATIONS = int(os.environ.get('GF_FUZZ_ITERATIONS', '2000'))
 SEED = int(os.environ.get('GF_FUZZ_SEED', '20261103'))
@@ -76,18 +78,9 @@ def seeded():
 def make_seeds(base):
     template = json.loads((ROOT / 'skill/assets/evaluation-template.json').read_text(encoding='utf-8'))
     proceed = json.loads((ROOT / 'tests/fixtures/validate-before-build.json').read_text(encoding='utf-8'))
-    receipt = base / 'receipt.txt'
-    receipt.write_text('SYNTHETIC TEST RECEIPT')
     (base / 'report.json').write_text('{"claims": []}')
-    event = gf_ledger.append(base / 'ledger.jsonl', 'paid_test', 'Fixture', 'Test measurable intent',
-                             outcome='synthetic fixture', artifact=str(receipt), attester='Human Fixture',
-                             pillars=list(scorer.CORE), confirm=lambda summary: None)
-    proceed['execution']['customer_validation_performed'] = True
-    proceed['evidence_ledger'] = 'ledger.jsonl'
-    for p in scorer.CORE:
-        proceed['pillars'][p]['evidence'] = 3
-        proceed['pillars'][p]['behaviors'] = [{'kind': 'paid_test', 'description': 'Fixture only', 'observed_at': '2026-10-22',
-                                               'source_or_artifact': 'receipt.txt', 'verified': True, 'ledger_event_id': event['id']}]
+    back_core(base, proceed)
+    template['evaluation_id'] = proceed['evaluation_id']
     return {'template': template, 'proceed': proceed}
 
 
@@ -143,9 +136,8 @@ def receipts_verify(data, base):
     """Independent oracle: PROCEED is only allowed when every core pillar and every passed gate has an intact receipt."""
     ledger = base / data['evidence_ledger']
     for p in scorer.CORE:
-        behaviors = data['pillars'][p].get('behaviors', [])
-        if not any(isinstance(b, dict) and isinstance(b.get('ledger_event_id'), str)
-                   and gf_ledger.verified_behavior(ledger, b['ledger_event_id'], p)[0] for b in behaviors):
+        # Decision 5: a receipt counts from its signed pillar_ids, linked from evaluation.json or not.
+        if not any(p in e.get('pillar_ids', []) and gf_ledger.verified_behavior(ledger, e['id'], p)[0] for e in gf_ledger.read_ledger(ledger)):
             return False
     profile = scorer.PROFILES[data['project'].get('business_model', 'general')]
     for gate in profile['pilot_gates']:

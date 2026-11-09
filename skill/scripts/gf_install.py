@@ -181,6 +181,19 @@ def install(targets, force, scope="project", overwrite_modified=False):
     return done
 
 
+def install_guard(platform, scope, project, out=sys.stderr):
+    """The guard-only hook, on by default. A hook problem never undoes a finished install."""
+    if scope != "project":
+        print("note: the guard hook is project-local, so it was skipped; run `greenfield hooks install --guard-only` inside a project.", file=out)
+        return
+    import gf_hooks
+    from gf_common import GFError
+    try:
+        gf_hooks.configure("install", project, platform, guard=True, observe=False)
+    except GFError as exc:
+        print(f"warning: guard hook not installed: {exc}", file=out)
+
+
 def _hooks_present(base, platform):
     import gf_hooks
     p = gf_hooks.path_for(base, platform)
@@ -312,6 +325,7 @@ def main(argv=None):
     g.add_argument("--no-gitignore", action="store_true", help="Never offer to edit .gitignore")
     parser.add_argument("--overwrite-modified", action="store_true", help="with --force, also replace role files you edited")
     parser.add_argument("--dry-run", action="store_true", help="print what would change and write nothing")
+    parser.add_argument("--no-guard", action="store_true", help="skip the hook that stops agents recording human attestations")
     args = parser.parse_args(argv)
     try:
         base, targets = plan(args.platform, args.scope, args.project, args.no_agents)
@@ -329,6 +343,8 @@ def main(argv=None):
         return 0
     for path in install(targets, args.force, args.scope, args.overwrite_modified):
         print("Installed", path)
+    if not args.no_guard:
+        install_guard(args.platform, args.scope, args.project, out=sys.stdout)
     if args.scope == "project":
         offer_gitignore(base, add=args.gitignore, never=args.no_gitignore)
     print("\nInstallation complete. Restart the coding agent if the skill is not immediately visible.")

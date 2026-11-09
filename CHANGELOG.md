@@ -13,8 +13,19 @@ Versioning rules:
 
 ## [Unreleased]
 
+### Changed
+
+- **Verdicts can change.** Proceed now needs signed, distinct receipts: one file or experiment backs at most 2 core pillars and 3 in all, each receipt must belong to this evaluation and idea and fit its pillar, and quality above 3 needs a receipt behind it, re-assessed after the newest one.
+- A failed core receipt or failed gate now says to stop or reframe; `ledger record` no longer takes behavior receipts (use `greenfield evidence add`).
+- `evidence_ledger` and `verification_report` must be `experiment-ledger.jsonl` and `source-verification.json` beside `evaluation.json`.
+- `greenfield install` and `install.py` add the guard hook by default (`--no-guard` opts out); it now also covers intake commands, signed files and `materials/raw/`.
+- Source reviews bind to their claim's signed entry in `source-verification.json`, so re-running `sources check` voids only reviews whose entry changed.
+
 ### Added
 
+- `greenfield evidence` (`init`, `add`, `link`, `redact`, `status`, `types`, `assessed`, `experiment add`) for bringing your own materials, with a PII scan and a preview before you sign.
+- `greenfield ledger reidea` carries receipts across a typo-sized edit of the idea.
+- `profiles show` prints a `pilot_gates` block to paste; `start --model` pre-fills it.
 - `greenfield uninstall --scope all` removes both the project and user installs.
 - `greenfield report` warns on stderr, naming the lines, when it overwrites a hand-edited generated block.
 - `fetch_public` stops after 20 seconds of wall-clock time per URL across all redirects.

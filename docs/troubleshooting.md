@@ -111,11 +111,12 @@ Fix:
 
 Whether the PreToolUse guard that stops agents from recording human attestations is installed.
 
-Can report: pass, warn, info.
+Can report: pass, warn.
 
 Fix:
 
 - `greenfield hooks install`
+- `greenfield hooks install --guard-only`
 
 ### `hooks.stale_posttooluse`
 
@@ -170,7 +171,7 @@ Can report: warn, pass.
 
 Fix:
 
-- Re-record those receipts with `greenfield ledger record`; they still resolve, with a warning, for one release
+- Re-record those receipts with `greenfield evidence add`; they still resolve, with a warning, for one release
 
 ### `attestation.hmac_key`
 
@@ -180,7 +181,7 @@ Can report: warn, fail, pass.
 
 Fix:
 
-- It is created on your first `greenfield ledger record`
+- It is created on your first `greenfield evidence add`
 - `chmod 600 <...>`
 
 ## Run
@@ -205,6 +206,16 @@ Can report: info, pass, fail.
 Fix:
 
 - Restore <...> from a backup or git; the first broken event is named above
+
+### `run.inbox_pii`
+
+Whether files in `materials/inbox/`, which the assistant may read, hold personal data.
+
+Can report: warn.
+
+Fix:
+
+- Run the greenfield evidence redact command it names
 
 ### `run.active`
 
