@@ -43,6 +43,10 @@ Current version: 2.2.0. Supported versions: the latest minor release only.
 | `--allow-host` on `gf_observe.py` accepts extra `Host` names | Not defended | This is your choice, for port forwarding or tunnels. Only use it on networks you trust | n/a |
 | Host agent sandbox or permission bypass | Out of scope | Greenfield relies on the host's controls and can't strengthen them | n/a |
 
+## How much to trust Proceed
+
+You attest your own receipts. The kind, `--as` type and `--result` are what you declare. Anything with shell access can sign, and `confirm_via` is self-reported, so it catches only accidental injection. An agent can also drive the real CLI under a pseudo-terminal (`script`, `unbuffer`, `expect`, python `pty`), read the one-time code and type it back, which records a genuine `confirm_via: tty`: the code proves a terminal, not a human. Quality, profile, claims and blockers can be changed by hand; every change is shown on each score, not stopped, and Proceed still needs receipts that support every quality above 3. Re-typed or re-exported data, splits under different experiment ids and re-saved binary files are not detected as reuse. A whole run folder copied into another project under the same slug is not detected. A one-word swap within `ledger reidea`'s 10-character allowance (dental to veterinary) is printed, not refused. Someone who deletes both `evaluation_id` and `quality-history.jsonl` can get a copied pre-wave ledger marked `legacy: true`. Source review covers only linked URL facts, and nothing ages evidence.
+
 ## Your part
 
 - Run attestations yourself, in your own terminal. An agent can't do this for you, and it shouldn't try.

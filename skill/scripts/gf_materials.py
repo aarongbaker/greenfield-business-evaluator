@@ -225,10 +225,10 @@ def _file_preview(path):
     return out
 
 
-def snapshot(folder, data):
-    """Append one line to quality-history.jsonl: the first one marks a run made with an evaluation_id."""
-    with (folder / "quality-history.jsonl").open("a", encoding="utf-8") as f:
-        f.write(json.dumps({"at": dt.datetime.now(dt.timezone.utc).isoformat(), "evaluation_id": data.get("evaluation_id")}) + "\n")
+def snapshot(folder, data, origin="start"):
+    """Write the run's W49 history line; the first one says whether start or a legacy init began tracking."""
+    import gf_history
+    gf_history.record(folder, data, _events(folder), origin=origin)
 
 
 def has_id_snapshot(folder):
@@ -265,6 +265,8 @@ def init(folder, ev):
     if not signed and events and not has_id_snapshot(folder):
         data["legacy"] = True
     _save(ev, data)
+    if not (folder / "quality-history.jsonl").exists():
+        snapshot(folder, data, "legacy" if data.get("legacy") else "init")
     return data
 
 
@@ -380,7 +382,7 @@ def add(args):
     fields = {"material": args.as_type, "evaluation_id": data["evaluation_id"], "run_slug": folder.name,
               "idea_sha": idea_sha(data["project"]), "idea_text": idea_text(data["project"]), "gate_ids": [gate] if gate else [],
               "result": args.result, "consent": args.consent, "success_threshold": (exp or {}).get("success_threshold", ""), "reused_from": reused,
-              "pii": "keep: " + args.keep_pii if args.keep_pii else "declared_redacted" if args.redacted else "clean", "confirm_via": "tty", "row_hashes": rows}
+              "pii": "keep: " + args.keep_pii if args.keep_pii else "declared_redacted" if args.redacted else "clean", "row_hashes": rows}
     if data.get("legacy"):
         fields["legacy"] = True
     if args.replaces:
@@ -521,8 +523,13 @@ def assessed(args):
 
 def do_init(args):
     folder, ev = _run(args)
+    tracked = (folder / "quality-history.jsonl").exists()
     data = init(folder, ev)
-    return {"evaluation_id": data["evaluation_id"], "folder": str(folder), "legacy": bool(data.get("legacy"))}
+    out = {"evaluation_id": data["evaluation_id"], "folder": str(folder), "legacy": bool(data.get("legacy"))}
+    n, m = len(data.get("hard_blockers") or []), len(data.get("claims") or [])
+    if not tracked and (n or m):
+        out["note"] = f"{n} blockers and {m} claims existed before tracking began"
+    return out
 
 
 def types(args):
@@ -718,7 +725,7 @@ def assessed_problem(stamp):
 def analyze(data, ledger_path, folder):
     """Read the ledger once and return what the scorer needs: counted receipts, per-pillar rubric levels, and notes."""
     out = {"events": [], "counted": [], "signed": [], "intact": set(), "rubric": {p: 3 for p in BASE}, "best": {p: 0 for p in BASE}, "backed": {p: False for p in BASE},
-           "newest": {p: None for p in BASE}, "governing": {}, "warnings": [], "anchor": None, "legacy": False}
+           "newest": {p: None for p in BASE}, "governing": {}, "warnings": [], "anchor": None, "legacy": False, "injected": []}
     try:
         events = gf_ledger.read_ledger(ledger_path)
     except (OSError, ValueError):
@@ -735,7 +742,11 @@ def analyze(data, ledger_path, folder):
                 reachable.add(c["previous_idea_sha"])
         if len(reachable) > 1:
             out["warnings"].append("receipts carried across an idea change")
+        adopting = {r["reattests"]: r for r in events if r.get("kind") == "reattestation" and r.get("legacy") and r.get("evaluation_id")
+                    and not gf_ledger.signature_problem(r, key)}
         for e in receipts(events):
+            if not e.get("evaluation_id") and e["id"] in adopting:  # W49: an adopted legacy event reads its binding from the adopter
+                e = {**e, **{k: adopting[e["id"]][k] for k in ("evaluation_id", "run_slug", "idea_sha", "idea_text", "material", "result") if k in adopting[e["id"]]}}
             if not e.get("evaluation_id"):
                 out["legacy"] = True
                 out["warnings"].append(f"Legacy receipt {e['id']} has no evaluation binding: re-record it with `greenfield evidence add`")
@@ -761,6 +772,14 @@ def analyze(data, ledger_path, folder):
                 out["governing"][p] = gov
                 out["rubric"][p] = rubric(gov)
             out["backed"][p] = any(e["id"] in out["intact"] and e.get("result") in ("pass", "mixed") and e.get("evaluation_id") and ceiling(e) >= 3 for e in mine)
+        out["injected"] = [e["id"] for e in events if e.get("confirm_via") == "injected" and e.get("evaluation_id") in (None, anchor)]
+        if out["injected"]:
+            out["warnings"].append(f"{len(out['injected'])} ledger event(s) were confirmed by code, not at a terminal (confirm_via: injected): "
+                                   "re-record them with `greenfield evidence add`")
+        first = next((e for e in events if e.get("sig") and e.get("kind") != "reattestation"), None)
+        if first and key and first.get("key_id") != gf_ledger.key_id(key):
+            out["warnings"].append(f"This machine's attestation key ({gf_ledger.key_id(key)}) is not the one that signed the first receipt "
+                                   f"({first.get('key_id')}): restore that key from backup if you have it")
     except (KeyError, TypeError, AttributeError):  # a hand-written event with missing or wrong-typed fields
         out["warnings"].append("Could not read every ledger receipt: malformed event")
     return out

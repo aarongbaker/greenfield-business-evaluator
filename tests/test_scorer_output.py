@@ -131,7 +131,8 @@ class FieldTests(unittest.TestCase):
     def test_pre_w12_keys_unchanged(self):
         old = json.loads((FIXTURES / "decision-pre-w12.json").read_text())
         new = scorer.score_file(FIXTURES / "validate-before-build.json")[0]
-        drop = lambda d: {k: ([w for w in v if not w.startswith("Could not validate")] if k == "warnings" else v) for k, v in d.items()}  # message text improved in W7
+        # Message text improved in W7; W49 added the rubric warning.
+        drop = lambda d: {k: ([w for w in v if not w.startswith("Could not validate") and "above what evidence" not in w] if k == "warnings" else v) for k, v in d.items()}
         self.assertEqual(drop({k: new[k] for k in old}), drop(old))
 
 

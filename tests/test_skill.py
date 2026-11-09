@@ -20,10 +20,12 @@ os.environ.pop("GF_ATTEST_KEY_FILE", None)
 
 
 def attest(*args, **kwargs):
-    """Record an attested ledger event as a test human: local key plus an injected confirmation."""
+    """Record an attested ledger event as a test human at a terminal: local key plus a stubbed tty, so it signs confirm_via: tty."""
     import gf_ledger
+    from unittest import mock
     gf_ledger.ensure_key()
-    return gf_ledger.append(*args, confirm=lambda summary: None, **kwargs)
+    with mock.patch.object(gf_ledger, "tty_confirm", lambda summary: None):
+        return gf_ledger.append(*args, **kwargs)
 
 
 def write_event(ledger_path, artifact, key=None, kind="paid_test", pillars=("problem", "market")):

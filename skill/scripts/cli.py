@@ -263,6 +263,7 @@ def h_score(args):
     except Exception as exc:  # never a verdict after an unexpected error
         raise GFError(f"internal validator error ({type(exc).__name__}: {str(exc)[:120]}). No decision was written.",
                       hint="report this with your evaluation.json") from None
+    changes = _track(args)
     if errors:
         raise GFError(errors[0] if len(errors) == 1 else f"{len(errors)} problems:\n  " + "\n  ".join(errors),
                       path=args.evaluation, hint=f"fix the field(s) above and re-run `greenfield score {args.evaluation}`")
@@ -275,7 +276,28 @@ def h_score(args):
     if args.json:
         for warning in result["warnings"]:
             print("WARNING: " + warning, file=sys.stderr)
+    if changes is not None:
+        result["change_log"] = changes
     return result
+
+
+def _track(args):
+    """W49: snapshot a run folder inside the project and return its whole change log as lines; None when not tracked."""
+    import gf_history
+    folder = Path(args.evaluation).resolve().parent
+    root = Path(getattr(args, "project", None) or ".").resolve()
+    run = (folder / gf_history.HISTORY).exists() or folder.is_relative_to(root / "research" / "greenfield")  # start/init write the first line
+    if not run or not folder.is_relative_to(root) or folder.name in gf_materials.RESERVED:
+        return None
+    try:
+        data = json.loads(Path(args.evaluation).read_text(encoding="utf-8"))
+        facts = gf_materials.analyze(data, folder / gf_materials.gf_ledger_name(), folder) if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+    if facts is None:
+        return None
+    gf_history.record(folder, data, facts["events"])
+    return gf_history.describe(gf_history.changes(folder), facts)
 
 
 def t_score(result, args):
@@ -286,6 +308,8 @@ def t_score(result, args):
     except (UnicodeEncodeError, LookupError):
         glyphs = "ascii"
     text = score_project.render_text(result, color=_color(args), glyphs=glyphs, all_warnings=args.all_warnings)
+    if result.get("change_log"):
+        text += "Changes since tracking began:\n" + "".join(f"  {line}\n" for line in result["change_log"])
     return text + (f"Saved decision.json to {args.output}\n" if args.output else "")
 
 

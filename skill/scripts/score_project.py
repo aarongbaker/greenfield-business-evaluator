@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from gf_profiles import BASE, GATE_HELP, PROFILES
 from gf_common import old_entry, GFError, VERSION, atomic_write, finite_nonneg, load_json, report, resolve_inside
 from gf_ledger import UNCONFIRMED, verified_behavior, reviewed_claims
+import gf_history
 import gf_materials
 
 PILLAR_WEIGHTS = BASE
@@ -233,6 +234,8 @@ def validate(data, base_dir=None):
                 errors.append(f"pillars.{p}.behaviors[{j}] must include kind, description, observed_at, source_or_artifact")
         if nonempty_str(item.get("assessed_at")) and gf_materials.assessed_problem(item["assessed_at"]):
             errors.append(f"pillars.{p}.assessed_at {gf_materials.assessed_problem(item['assessed_at'])}: run greenfield evidence assessed {p}")
+        if type(q) is int and q > facts['rubric'][p]:  # W49: a finding, never a verdict change
+            warnings.append(f"pillars.{p}: quality {q} is above what evidence {e} supports ({facts['rubric'][p]})")
         by_id = {x['id']: x for x in facts['events']}
         for b in behaviors:
             if isinstance(b, dict) and b.get('ledger_event_id') is not None and not isinstance(b['ledger_event_id'], str):
@@ -358,6 +361,11 @@ def validate(data, base_dir=None):
         errors.append('evaluation_id is missing: run greenfield evidence init')
     elif not own:
         warnings.append('evaluation_id is missing: run greenfield evidence init')
+    if isinstance(data.get('hard_blockers'), list):
+        errors.extend(gf_history.blocker_problems(data, base_dir, review_map, facts['intact']))
+    facts['shortened'] = gf_history.ledger_shortened(base_dir, facts['events'])
+    if facts['shortened']:
+        warnings.append('experiment ledger was shortened: restore it from backup; no pilot verdict until it is whole')
     linked_ids = {b.get('ledger_event_id') for item in pillars.values() if isinstance(item, dict) and isinstance(item.get('behaviors'), list) for b in item['behaviors'] if isinstance(b, dict) and isinstance(b.get('ledger_event_id'), str)}
     for x in facts['counted']:
         for p in x['pillar_ids']:
@@ -440,6 +448,7 @@ def findings_cap(result):
     return (result["decision"] == "VALIDATE_BEFORE_BUILD" and result["route"] is None and not result["missing_core_behavior_evidence"]
             and not _to_assess(result) and not result["missing_pilot_gates"] and not result["source_review_pending"]
             and not result["unresolved_plausible_fatal_blockers"] and not any("ledger reattest" in w for w in result["warnings"])
+            and not result["injected_events"] and not result["ledger_shortened"]
             and (total < 75 or any(qs[p] < 3 for p in CORE)))
 
 
@@ -461,7 +470,7 @@ def _total_and_decision(data, facts, warnings):
     missing_gates = [gate for gate in profile['pilot_gates'] if not (isinstance(data.get('pilot_gates',{}).get(gate),dict)
                      and data['pilot_gates'][gate].get('passed') is True
                      and data['pilot_gates'][gate].get('evidence_ids'))]
-    unconfirmed = any('ledger reattest' in w or w.startswith('Legacy receipt') for w in warnings)
+    unconfirmed = any('ledger reattest' in w or w.startswith('Legacy receipt') for w in warnings) or bool(facts.get('injected')) or bool(facts.get('shortened'))
     receipt_gaps = proceed_problems(data, qs, facts) if complete else []
     source_risk = bool(data.get('claims') and
                        (not data.get('verification_report') or any('Unreviewed public source claim' in w or 'Could not validate source review ledger/report' in w for w in warnings)))
@@ -527,6 +536,8 @@ def score(data, warnings):
         "receipt_gaps": receipt_gaps,
         "failed_core": failed_core(facts),
         "failed_gates": failed_gates(facts, missing_gates),
+        "injected_events": list(facts.get('injected', [])),
+        "ledger_shortened": bool(facts.get('shortened')),
         "deprecated_fields": DEPRECATED_FIELDS,
         "disclaimer": "Heuristic triage, not a probability of commercial success or legal approval."
     }
@@ -584,6 +595,10 @@ def headline(result, data):
         text = "Ledger receipts are not confirmed on this machine: re-attest before a pilot"
     elif any(w.startswith("Legacy receipt") for w in result["warnings"]):
         text = "Older receipts have no evaluation binding: re-record them before a pilot"
+    elif result["ledger_shortened"]:
+        text = "The experiment ledger was shortened: restore it before a pilot"
+    elif result["injected_events"]:
+        text = "Some receipts were confirmed by code, not at a terminal: re-record them before a pilot"
     elif _to_assess(result):
         text = "Re-assess findings from your new receipts, then re-score"
     elif result.get("findings_cap"):
@@ -651,6 +666,10 @@ def next_step(result, data):
         return "Re-confirm your receipts with `greenfield ledger reattest`, then re-score."
     if any(w.startswith("Legacy receipt") for w in result["warnings"]):
         return "Re-record older receipts with `greenfield evidence add`, then re-score."
+    if result["ledger_shortened"]:
+        return "Restore experiment-ledger.jsonl from your backup, then re-score."
+    if result["injected_events"]:
+        return f"Re-record {', '.join(result['injected_events'])} at a terminal with `greenfield evidence add`, then re-score."
     if _to_assess(result):
         return f"Re-assess findings from your new receipts, run `greenfield evidence assessed {' '.join(_to_assess(result))}`, then re-score."
     if nxt:
@@ -720,6 +739,7 @@ def gap_text(gap):
 # (pattern with one name group, summary when it matches more than once)
 COLLAPSE = (
     (r"pillars\.(\w+): no claims linked$", "{n} pillars have no linked claims: {names}"),
+    (r"pillars\.(\w+): quality \d is above what evidence", "{n} pillars have quality above what their evidence supports: {names}"),
     (r"pillars\.(\w+): strong claimed behavior", "{n} pillars claim strong behavior without customer validation: {names}"),
     (r"(claims\[\d+\]): source has no access date$", "{n} sources have no access date: {names}"),
     (r"(claims\[\d+\]): estimate has no documented formula", "{n} estimates have no formula in notes: {names}"),
@@ -804,6 +824,11 @@ def render_text(result, *, color, width=80, glyphs="unicode", all_warnings=False
 
 def score_file(path):
     """Load, validate and score one evaluation: (result | None, errors, warnings). Bad input never raises."""
+    return _score_trusted(path, allow_injected=False)
+
+
+def _score_trusted(path, *, allow_injected):
+    """score_file, optionally counting confirm_via: injected events as confirmed. Private: tests and the pinned demo only (W49)."""
     path = pathlib.Path(path)
     try:
         data = load_json(path)
@@ -812,6 +837,9 @@ def score_file(path):
     errors, warnings = validate(data, path.parent)
     if errors:
         return None, errors, warnings
+    if allow_injected and warnings.facts.get('injected'):
+        warnings.facts['injected'] = []
+        warnings[:] = [w for w in warnings if 'confirm_via: injected' not in w]
     result = score(data, warnings)
     return result, [], result["warnings"]
 

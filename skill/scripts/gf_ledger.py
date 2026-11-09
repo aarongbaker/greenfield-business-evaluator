@@ -179,7 +179,8 @@ def _write(path, fields, key=None):
             unlock(f.fileno())
 
 
-def append(path, kind, project, hypothesis, outcome='', artifact=None, attester='', observed_at='', notes='', pillars=None, claim_id='', experiment_id='', confirm=tty_confirm, extra=None, preview=None):
+def append(path, kind, project, hypothesis, outcome='', artifact=None, attester='', observed_at='', notes='', pillars=None, claim_id='', experiment_id='', confirm=None, extra=None, preview=None):
+    confirm = confirm or tty_confirm  # looked up per call, so confirm_via reads the live tty_confirm
     if kind not in ALLOWED:
         raise ValueError('Invalid kind')
     if not project.strip() or not hypothesis.strip():
@@ -202,6 +203,7 @@ def append(path, kind, project, hypothesis, outcome='', artifact=None, attester=
     if not attested:
         return _write(path, fields)
     confirm({**summary_of(fields), **(preview or {})})  # before the lock, so a slow human never blocks other writers
+    fields['confirm_via'] = via(confirm)
     key = load_key()
     if not key:
         raise GFError('no attestation key on this machine', path=key_path())
@@ -220,21 +222,74 @@ def trusted_artifact(events, event, key):
     return None, problem
 
 
-def reattest(path, confirm=tty_confirm):
-    """Re-confirm each unsigned (or other-key) attested event with a new signed reattestation event."""
+def via(confirm):
+    """Self-reported: catches an injected confirm, not a script written to lie (W49)."""
+    return 'tty' if confirm is tty_confirm else 'injected'
+
+
+def tty_adopt(event):
+    """Ask at the terminal for a legacy receipt's --as type and --result; blank leaves them out (evidence only)."""
+    from gf_materials import MATERIALS, RESULTS
+    try:
+        tty = open('/dev/tty', 'rb+', buffering=0)
+    except OSError:
+        raise GFError(NO_TTY) from None
+    with tty:
+        def ask(q):
+            tty.write(q.encode('utf-8'))
+            return tty.readline(64).decode('utf-8', 'replace').strip()
+        fits = [m for m, row in MATERIALS.items() if row[0] == event['kind']]
+        material = ask(f"--as type for {event['id']} ({', '.join(fits)}; blank for none): ")
+        result = ask('--result (pass, mixed, fail; blank for none): ')
+    if (material and material not in fits) or (result and result not in RESULTS):
+        raise GFError(f'--as must be one of {", ".join(fits)} and --result one of {", ".join(RESULTS)}; nothing was recorded')
+    return material or None, result or None
+
+
+def legacy_run(folder):
+    """evidence init marked this run legacy, and its history starts there (start always writes the first line)."""
+    try:
+        data = load_json(folder / 'evaluation.json')
+    except (OSError, ValueError):
+        return False
+    import gf_history
+    lines = gf_history.read(folder)
+    first = next((x for x in lines if 'snapshot' in x), None)
+    return data.get('legacy') is True and (first is None or first.get('origin') == 'legacy')
+
+
+def reattest(path, confirm=None, adopt=None):
+    """Re-confirm this evaluation's unsigned or other-key attested events, and adopt pre-wave events in a legacy run."""
+    confirm, adopt = confirm or tty_confirm, adopt or tty_adopt
     path = Path(path)
+    folder = path.parent.resolve()
     events = read_ledger(path)
     key = load_key()
+    anchor = next((e['evaluation_id'] for e in events if e.get('sig') and e.get('evaluation_id')), None)
+    first_signed = next((i for i, e in enumerate(events) if e.get('sig')), len(events))
+    legacy = legacy_run(folder)
+    adopted = {r.get('reattests') for r in events if r['kind'] == 'reattestation' and r.get('evaluation_id') and not signature_problem(r, key)}
     out = []
-    for e in events:
+    for i, e in enumerate(events):
         if e['kind'] not in ATTESTED or not e.get('human_attested') or not e.get('artifact'):
             continue
-        meta, problem = trusted_artifact(events, e, key)
-        if meta or not problem.startswith(UNCONFIRMED):
+        adopting = not e.get('evaluation_id')
+        if adopting:
+            if e['id'] in adopted:
+                continue
+            if not legacy:
+                out.append({'id': e['id'], 'action': 'refused', 'reason': 'has no evaluation binding; only a run marked legacy by evidence init adopts it: re-record it with greenfield evidence add'})
+                continue
+        else:
+            meta, problem = trusted_artifact(events, e, key)
+            if e['evaluation_id'] != anchor or meta or not problem.startswith(UNCONFIRMED):
+                continue
+        if not e.get('sig') and not (legacy and i < first_signed):
+            out.append({'id': e['id'], 'action': 'refused', 'reason': 'never signed, and recorded after the first signed event'})
             continue
         try:
-            doc = artifact_digest(e['artifact']['path'], path.parent)
-        except (OSError, ValueError) as exc:
+            doc = artifact_digest(e['artifact']['path'], folder)
+        except (OSError, ValueError) as exc:  # GFError (outside the run folder) is a ValueError
             out.append({'id': e['id'], 'action': 'skipped', 'reason': str(exc)})
             continue
         if doc['sha256'] != e['artifact']['sha256']:
@@ -245,11 +300,23 @@ def reattest(path, confirm=tty_confirm):
                   'attester': e.get('attester', ''), 'human_attested': True, 'artifact': doc, 'pillar_ids': e.get('pillar_ids', []),
                   'claim_id': e.get('claim_id', ''), 'experiment_id': e.get('experiment_id', ''),
                   **{k: e[k] for k in CARRIED if k in e}}
-        confirm({'re-confirming': f"{e['kind']} {e['id']} recorded {e.get('recorded_at', '')}", **summary_of({**fields, 'kind': e['kind']})})
+        preview = {'re-confirming': f"{e['kind']} {e['id']} recorded {e.get('recorded_at', '')}"}
+        if not e.get('sig'):
+            preview['note'] = 'This event was never signed on this machine; attest only if you recorded it yourself.'
+        if adopting:
+            import gf_materials
+            data = load_json(folder / 'evaluation.json')
+            preview['current idea'] = gf_materials.idea_text(data['project'])
+            fields.update(gf_materials.binding(data, folder), legacy=True)
+            if e['kind'] in BEHAVIOR:
+                material, result = adopt(e)
+                fields.update({k: v for k, v in (('material', material), ('result', result)) if v})
+        confirm({**preview, **summary_of({**fields, 'kind': e['kind']})})
+        fields['confirm_via'] = via(confirm)
         key = load_key()
         if not key:
             raise GFError('no attestation key on this machine', path=key_path())
-        out.append({'id': e['id'], 'action': 'reattested', 'event': _write(path, fields, key)['id']})
+        out.append({'id': e['id'], 'action': 'adopted' if adopting else 'reattested', 'event': _write(path, fields, key)['id']})
     return out
 
 
@@ -372,6 +439,9 @@ def handle(args):
         from collections import Counter
         value['by_type']=dict(Counter(e['kind'] for e in events))
         value['behavior_receipts']=[{'id':e['id'],'kind':e['kind'],'pillar_ids':e['pillar_ids'],'integrity':verified_behavior(args.ledger,e['id'])[0]} for e in events if e['kind'] in BEHAVIOR]
+        first, key = next((e for e in events if e.get('sig') and e['kind'] != 'reattestation'), None), load_key()
+        if first and key and first.get('key_id') != key_id(key):
+            value['warnings'] = [f"this machine's attestation key ({key_id(key)}) is not the one that signed the first receipt ({first.get('key_id')})"]
     return value
 
 
