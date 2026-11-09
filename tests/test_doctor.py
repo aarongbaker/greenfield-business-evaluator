@@ -199,7 +199,7 @@ class Rows(DoctorCase):
                                               "pillar_ids": [], "claim_id": "", "experiment_id": ""}, gf_ledger.load_key())
         r = self.checks()["attestation.legacy_receipts"]
         self.assertEqual(r["status"], "warn")
-        self.assertIn("ledger record", r["fix"])
+        self.assertIn("evidence add", r["fix"])
 
     def test_hmac_key_missing_then_loose_then_ok(self):
         self.assertEqual(self.status("attestation.hmac_key"), "warn")

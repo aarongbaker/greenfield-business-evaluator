@@ -1,5 +1,6 @@
 """W42/W43/W40/W41: what a signed receipt must be before it can carry a Proceed."""
 import argparse
+import datetime as dt
 import json
 import pathlib
 import sys
@@ -173,6 +174,106 @@ class IdeaChange(ReceiptRules):
         self.typo("Test concept AAAABBBBBBB")
         with self.assertRaisesRegex(GFError, "more than a typo"):
             gf_materials.reidea(self.base / "experiment-ledger.jsonl", confirm=lambda s: None)
+
+
+
+class Gates(ReceiptRules):
+    def model(self, name):
+        self.data["project"]["business_model"] = name
+        self.data["pilot_gates"] = {}
+
+    def gate_receipt(self, name, kind, material, gate, result="pass"):
+        (self.base / name).write_text("GATE " + name)
+        return attest(self.base / "experiment-ledger.jsonl", kind, "F", "H", artifact=name, attester="Human", pillars=[],
+                      extra={**gf_materials.binding(self.data, self.base), "material": material, "gate_ids": [gate], "result": result})
+
+    def close(self, gate, event):
+        self.data.setdefault("pilot_gates", {})[gate] = {"passed": True, "evidence_ids": [event["id"]]}
+
+    def errors(self):
+        return scorer.validate(self.data, self.base)[0]
+
+    def test_every_suggested_gate_accepts_that_kind(self):
+        for mat, (kind, _, _, gates) in gf_materials.MATERIALS.items():
+            for g in gates:
+                self.assertIn(kind, scorer.GATE_HELP[g]["accepts"], (mat, g))
+
+    def test_every_profile_can_reach_proceed(self):
+        for profile, spec in scorer.PROFILES.items():
+            with self.subTest(profile):
+                self.setUp()
+                self.model(profile)
+                for g in spec["pilot_gates"]:
+                    mat = next(m for m, row in gf_materials.MATERIALS.items() if g in row[3])
+                    self.close(g, self.gate_receipt(f"{g}.txt", gf_materials.MATERIALS[mat][0], mat, g))
+                (self.base / "plan.txt").write_text("execution evidence")  # regulated weighs execution too heavily for an unreceipted 3 to clear 75
+                attest(self.base / "experiment-ledger.jsonl", "feasibility_proof", "F", "H", artifact="plan.txt", attester="Human", pillars=["execution"],
+                       extra={**gf_materials.binding(self.data, self.base), "material": "memo", "gate_ids": [], "result": "pass"})
+                self.data["pillars"]["execution"].update(quality=4, assessed_at=(dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=2)).isoformat())
+                self.assertEqual(self.run_score()["decision"], PROCEED)
+
+    def test_one_receipt_cannot_close_two_gates(self):
+        self.model("bootstrapped_saas")
+        e = self.gate_receipt("g.txt", "paid_test", "presale", "pricing_test")
+        self.close("pricing_test", e)
+        self.close("repeatable_channel", e)
+        self.assertTrue(any("was recorded for pricing_test" in x or "one file closes one gate" in x for x in self.errors()), self.errors())
+
+    def test_failed_receipt_cannot_close_a_gate(self):
+        self.model("bootstrapped_saas")
+        self.close("pricing_test", self.gate_receipt("g.txt", "paid_test", "presale", "pricing_test", result="fail"))
+        self.assertTrue(any("came back fail" in x for x in self.errors()), self.errors())
+
+    def test_wrong_material_cannot_close_a_gate(self):
+        self.model("marketplace")
+        self.close("transaction_margin", self.gate_receipt("g.txt", "paid_test", "presale", "transaction_margin"))
+        self.assertTrue(any("presale cannot close it" in x for x in self.errors()), self.errors())
+
+    def test_failed_gate_receipt_says_change_the_plan(self):
+        self.model("regulated")
+        self.gate_receipt("g.txt", "feasibility_proof", "memo", "compliance_path", result="fail")
+        r = self.run_score()
+        self.assertEqual(r["failed_gates"], ["compliance_path"])
+        self.assertIn("change the plan", r["next_step"])
+
+
+class NextSteps(ReceiptRules):
+    def result(self, data, warnings=()):
+        errors, w = scorer.validate(data, self.base)
+        self.assertFalse(errors, errors)
+        w.extend(warnings)
+        return scorer.score(data, w)
+
+    def test_experiment_with_done_pillars_is_skipped(self):
+        data = sample()
+        data["pillars"]["economics"]["evidence"] = 0
+        data["experiments"] = [{"id": "EXP-1", "pillars": ["timing"], "hypothesis": "done"}, {"id": "EXP-2", "pillars": ["economics"], "hypothesis": "next"}]
+        self.assertIn("EXP-2", scorer.score(data, scorer.validate(data)[1])["next_step"])
+
+    def test_blocker_comes_before_experiments(self):
+        data = sample()
+        data["claims"] = [{"id": "C1", "pillar": "execution", "classification": "fact", "statement": "x", "source_url": "https://example.org/r", "accessed_date": "2026-10-23"}]
+        data["hard_blockers"] = [{"id": "R1", "fatal": True, "status": "plausible", "source_ids": ["C1"], "finding": "Maybe"}]
+        data["experiments"] = [{"id": "EXP-1", "pillars": ["economics"], "hypothesis": "h"}]
+        self.assertIn("blocker R1", scorer.score(data, scorer.validate(data)[1])["next_step"])
+
+    def test_reattest_named_in_headline_and_next_step(self):
+        r = self.result(self.data, ["1 receipt could not be confirmed: run greenfield ledger reattest"])
+        self.assertIn("reattest", r["next_step"])
+        self.assertIn("e-attest", r["headline"].replace("reattest", "re-attest"))
+
+    def test_unassessed_receipts_say_reassess(self):
+        self.extra_receipt("late.txt", ["problem"])
+        self.data["pillars"]["problem"]["assessed_at"] = "2026-01-01T00:00:00+00:00"
+        self.assertIn("evidence assessed problem", self.result(self.data)["next_step"])
+
+    def test_unlinked_receipt_warns_but_gate_only_does_not(self):
+        e = self.extra_receipt("spare.txt", ["timing"])
+        (self.base / "fp.txt").write_text("fp")
+        attest(self.base / "experiment-ledger.jsonl", "feasibility_proof", "F", "H", artifact="fp.txt", attester="Human", pillars=[],
+               extra={**gf_materials.binding(self.data, self.base), "material": "memo", "gate_ids": ["compliance_path"], "result": "pass"})
+        _, w = scorer.validate(self.data, self.base)
+        self.assertEqual([x for x in w if "not linked" in x], [f"Ledger receipt {e['id']} for timing is not linked from evaluation.json"])
 
 
 if __name__ == "__main__":

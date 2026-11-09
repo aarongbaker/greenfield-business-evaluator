@@ -39,7 +39,7 @@ greenfield ledger summary
 Hypotheses, notes and failures need no receipt. Real customer behavior does: a paid test, a signed letter of intent, a repeat purchase. Record it with the receipt file, which must be inside the research folder:
 
 ```bash
-greenfield ledger record --kind paid_test --project-name "Laundry routing" --hypothesis "Price accepted" --outcome "3 of 10 paid" --attester "Your Name" --artifact receipts/stripe-export.csv --pillar problem --pillar economics  # needs-terminal
+greenfield evidence add stripe-export.csv --as presale --result pass --consent customer_terms --attester "Your Name" --pillar problem --pillar economics  # needs-terminal
 ```
 
 Put the event id it prints (`EV-...`) into that pillar's behavior `ledger_event_id` in `evaluation.json`. Only then can the pillar's evidence score reach 3 or more. An interview without an observed action is evidence 1.

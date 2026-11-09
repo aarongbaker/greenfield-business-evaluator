@@ -243,10 +243,11 @@ def scaffold(project, args):
             data["project"][key] = value
     data["execution"]["mode"] = "not_started"
     data["evidence_ledger"], data["verification_report"] = "experiment-ledger.jsonl", "source-verification.json"
-    import gf_materials
+    import gf_materials, gf_profiles
     if slug in gf_materials.RESERVED:
         raise GFError(f"{slug} is reserved for the bundled demo", hint="greenfield start --idea '...' --slug my-idea")
     data["evaluation_id"] = "eval-" + uuid4().hex[:8]
+    data["pilot_gates"] = gf_profiles.describe(data["project"].get("business_model") or "general")["pilot_gates_skeleton"]
     gf_materials.setup_folders(folder)
     gf_materials.snapshot(folder, data)
     atomic_write_json(ev, data, mode=0o600)

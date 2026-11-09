@@ -240,11 +240,11 @@ def c_attestation(ctx):
         except (OSError, ValueError, AttributeError):
             pass  # a broken ledger is reported by run.ledger
     out = [_r("attestation.legacy_receipts", "Attestation", "warn", f"{legacy} receipt(s) store an absolute artifact path and break if the folder moves",
-              "Re-record those receipts with `greenfield ledger record`; they still resolve, with a warning, for one release")
+              "Re-record those receipts with `greenfield evidence add`; they still resolve, with a warning, for one release")
            if legacy else _r("attestation.legacy_receipts", "Attestation", "pass", "no receipts with absolute paths")]
     kp = gf_ledger.key_path()
     if not gf_ledger.load_key():
-        out.append(_r("attestation.hmac_key", "Attestation", "warn", f"no signing key at {kp}", "It is created on your first `greenfield ledger record`"))
+        out.append(_r("attestation.hmac_key", "Attestation", "warn", f"no signing key at {kp}", "It is created on your first `greenfield evidence add`"))
     elif os.name == "posix" and stat.S_IMODE(kp.stat().st_mode) & 0o077:
         out.append(_r("attestation.hmac_key", "Attestation", "fail", f"{kp} is readable by others", f"chmod 600 {shlex.quote(str(kp))}"))
     else:

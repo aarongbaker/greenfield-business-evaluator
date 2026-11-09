@@ -1,3 +1,4 @@
+import json
 """Business-model policy profiles (transparent judgment heuristics, not predictions)."""
 BASE={'problem':20,'market':15,'value':15,'economics':15,'distribution':15,'competition':10,'execution':5,'timing':5}
 PROFILES={
@@ -33,23 +34,23 @@ LIQ = ('feasibility_proof', 'customer_action', 'repeat_purchase')
 RUN = ('feasibility_proof', 'signed_commitment')
 # gate id -> what it asks, an example of what satisfies it, and the ledger kinds (or 'claim') it accepts
 GATE_HELP = {
-    'pricing_test': {'description': 'Real buyers were shown a price and some agreed to pay it.', 'example': 'ev-pricing-test-3-of-10-accepted', 'accepts': PAID},
-    'delivery_margin': {'description': 'Cost to deliver one unit is measured and leaves a margin at the tested price.', 'example': 'ev-delivery-cost-sheet', 'accepts': FP},
-    'repeatable_channel': {'description': 'One acquisition channel produced customers more than once at a known cost.', 'example': 'ev-channel-cohort-2', 'accepts': CH},
-    'venture_scale_market': {'description': 'The reachable market is large enough to return a fund, built bottom-up from sourced counts.', 'example': 'ev-bottom-up-sam', 'accepts': FP_C},
-    'credible_growth_channel': {'description': 'A channel that scales without proportional headcount has early evidence.', 'example': 'ev-channel-growth-trial', 'accepts': CH},
-    'funding_runway': {'description': 'The capital needed to reach the next milestone is estimated and a path to raise it exists.', 'example': 'ev-runway-model', 'accepts': RUN},
-    'supply_commitments': {'description': 'Suppliers committed (signed, listed or paid) before the product exists.', 'example': 'ev-supplier-commitments', 'accepts': COMMIT},
-    'demand_commitments': {'description': 'Buyers committed (deposit, pre-order or signed intent) before the product exists.', 'example': 'ev-buyer-deposits', 'accepts': COMMIT},
-    'liquidity_model': {'description': 'There is a plan and a number for matches per listing in one dense niche.', 'example': 'ev-liquidity-model', 'accepts': LIQ},
-    'transaction_margin': {'description': 'Take rate minus payment, support and fraud cost is positive per transaction.', 'example': 'ev-take-rate-model', 'accepts': FP_PT},
-    'paid_engagement': {'description': 'At least one customer paid for the work at the intended price.', 'example': 'ev-paid-invoice', 'accepts': PAID},
-    'delivery_capacity': {'description': 'Hours per engagement are measured, and the number of clients the team can serve is known.', 'example': 'ev-hours-log', 'accepts': FP},
-    'owner_dependence': {'description': 'The work can be delivered or sold without the founder in every engagement.', 'example': 'ev-sop-handoff', 'accepts': FP},
-    'jurisdiction_review': {'description': 'The rules in the first target jurisdiction were read from the regulator and summarized.', 'example': 'ev-regulator-source', 'accepts': FP_C},
-    'compliance_path': {'description': 'A named license, approval or registration path exists, with cost and time.', 'example': 'ev-compliance-plan', 'accepts': FP},
-    'data_and_safety': {'description': 'Data handling and the worst safety failure are identified, with a control for each.', 'example': 'ev-safety-review', 'accepts': FP},
-    'professional_review': {'description': 'A qualified professional (lawyer, clinician, compliance lead) reviewed the plan.', 'example': 'ev-professional-memo', 'accepts': FP},
+    'pricing_test': {'description': 'Real buyers were shown a price and some agreed to pay it.', 'example': 'presale export', 'accepts': PAID},
+    'delivery_margin': {'description': 'Cost to deliver one unit is measured and leaves a margin at the tested price.', 'example': 'delivery cost model', 'accepts': FP},
+    'repeatable_channel': {'description': 'One acquisition channel produced customers more than once at a known cost.', 'example': 'repeat cohort export', 'accepts': CH},
+    'venture_scale_market': {'description': 'The reachable market is large enough to return a fund, built bottom-up from sourced counts.', 'example': 'market size model, or a reviewed sourced count', 'accepts': FP_C},
+    'credible_growth_channel': {'description': 'A channel that scales without proportional headcount has early evidence.', 'example': 'channel analytics export', 'accepts': CH},
+    'funding_runway': {'description': 'The capital needed to reach the next milestone is estimated and a path to raise it exists.', 'example': 'runway model', 'accepts': RUN},
+    'supply_commitments': {'description': 'Suppliers committed (signed, listed or paid) before the product exists.', 'example': 'supplier LOIs', 'accepts': COMMIT},
+    'demand_commitments': {'description': 'Buyers committed (deposit, pre-order or signed intent) before the product exists.', 'example': 'buyer deposits', 'accepts': COMMIT},
+    'liquidity_model': {'description': 'There is a plan and a number for matches per listing in one dense niche.', 'example': 'liquidity model', 'accepts': LIQ},
+    'transaction_margin': {'description': 'Take rate minus payment, support and fraud cost is positive per transaction.', 'example': 'take-rate model or paid invoice', 'accepts': FP_PT},
+    'paid_engagement': {'description': 'At least one customer paid for the work at the intended price.', 'example': 'paid invoice', 'accepts': PAID},
+    'delivery_capacity': {'description': 'Hours per engagement are measured, and the number of clients the team can serve is known.', 'example': 'hours log', 'accepts': FP},
+    'owner_dependence': {'description': 'The work can be delivered or sold without the founder in every engagement.', 'example': 'handoff ops record', 'accepts': FP},
+    'jurisdiction_review': {'description': 'The rules in the first target jurisdiction were read from the regulator and summarized.', 'example': 'reviewed regulator claim, or counsel memo', 'accepts': FP_C},
+    'compliance_path': {'description': 'A named license, approval or registration path exists, with cost and time.', 'example': 'compliance plan memo', 'accepts': FP},
+    'data_and_safety': {'description': 'Data handling and the worst safety failure are identified, with a control for each.', 'example': 'safety review memo', 'accepts': FP},
+    'professional_review': {'description': 'A qualified professional (lawyer, clinician, compliance lead) reviewed the plan.', 'example': 'signed professional memo', 'accepts': FP},
 }
 
 
@@ -57,7 +58,8 @@ def describe(name):
     """Everything `profiles show` prints, JSON-ready. Raises KeyError for an unknown profile."""
     p = PROFILES[name]
     return {'name': name, 'use_when': USE_WHEN[name], 'weights': dict(p['weights']), 'questions': list(p['questions']),
-            'pilot_gates': [{'id': g, 'description': GATE_HELP[g]['description'], 'evidence_example': GATE_HELP[g]['example']} for g in p['pilot_gates']]}
+            'pilot_gates': [{'id': g, 'description': GATE_HELP[g]['description'], 'evidence_example': GATE_HELP[g]['example']} for g in p['pilot_gates']],
+            'pilot_gates_skeleton': {g: {'passed': False, 'evidence_ids': []} for g in p['pilot_gates']}}
 
 
 def summary():
@@ -86,6 +88,7 @@ def _text(data, args):
         out += [f"  {k:13}{v:>3}" for k, v in sorted(data['weights'].items(), key=lambda kv: (-kv[1], kv[0]))]
         out.append("Pilot gates:" if data['pilot_gates'] else "Pilot gates: none")
         out += [f"  {g['id']}: {g['description']}\n      evidence such as: {g['evidence_example']}" for g in data['pilot_gates']]
+        out.append("Paste into evaluation.json:\n  " + ('"pilot_gates": ' + json.dumps(data['pilot_gates_skeleton']) if data['pilot_gates_skeleton'] else "{} (no gates)"))
         return "\n".join(out + (["Guiding questions:"] + ["  " + q for q in data['questions']] if data['questions'] else [])) + "\n"
     rows = [f"{r['name']:19}{r['gates']:>2} gates  {', '.join(t['pillar'] + ' ' + str(t['weight']) for t in r['top_weights'])}\n{'':19}{r['use_when']}" for r in data['profiles']]
     return "\n".join(rows) + "\n\nSee one: greenfield profiles show <name>; compare: greenfield profiles compare <a> <b>\n"

@@ -171,7 +171,7 @@ Can report: warn, pass.
 
 Fix:
 
-- Re-record those receipts with `greenfield ledger record`; they still resolve, with a warning, for one release
+- Re-record those receipts with `greenfield evidence add`; they still resolve, with a warning, for one release
 
 ### `attestation.hmac_key`
 
@@ -181,7 +181,7 @@ Can report: warn, fail, pass.
 
 Fix:
 
-- It is created on your first `greenfield ledger record`
+- It is created on your first `greenfield evidence add`
 - `chmod 600 <...>`
 
 ## Run
