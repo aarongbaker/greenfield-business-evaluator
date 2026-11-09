@@ -289,6 +289,17 @@ def t_score(result, args):
     return text + (f"Saved decision.json to {args.output}\n" if args.output else "")
 
 
+def h_plan(args):
+    import gf_plan
+    ev = args.evaluation or _ctx(args)["evaluation"]
+    return gf_plan.for_cli(ev, target=args.target, top=args.top, profile=args.profile, add=args.add_experiments)
+
+
+def t_plan(data, args):
+    import gf_plan
+    return gf_plan.render(data)
+
+
 def h_portfolio(args):
     import gf_portfolio
     return gf_portfolio.run(args.manifest, args.output, args.markdown)
@@ -472,6 +483,15 @@ def build_parser():
     _run_arg(p)
     p.add_argument("--output", type=Path, help="also write the decision JSON here (default with no path: decision.json beside the run's evaluation)")
     p.add_argument("--all-warnings", action="store_true", help="text mode: list every warning instead of the top 5 groups")
+
+    p = _cmd(sub, "plan", "the cheapest receipts that reach a target score with Proceed (writes nothing unless --add-experiments)", [
+        "greenfield plan", "greenfield plan research/greenfield/my-idea/evaluation.json --target 90", "greenfield plan --add-experiments"], h_plan, t_plan)
+    p.add_argument("evaluation", type=Path, nargs="?", help="evaluation.json (default: the active run's)")
+    _run_arg(p)
+    p.add_argument("--target", type=int, default=75, choices=(75, 90, 100), help="score to reach (default 75)")
+    p.add_argument("--profile", choices=sorted(PROFILES), help="what-if: plan under another profile without editing the file")
+    p.add_argument("--top", type=int, default=3, help="how many routes to show (default 3)")
+    p.add_argument("--add-experiments", action="store_true", help="write the top route's new experiments into evaluation.json")
 
     p = _cmd(sub, "portfolio", "rank several scored ideas against each other", [
         "greenfield portfolio portfolio.json --output ranking.json", "greenfield portfolio portfolio.json --output ranking.json --markdown ranking.md"], h_portfolio)

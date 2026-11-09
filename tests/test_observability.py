@@ -630,7 +630,7 @@ class DecisionTests(ServerMixin, unittest.TestCase):
         with self.assertRaises(observe.GFError):
             observe.link_research(self.root, demo, "research")
         self.assertEqual([p["key"] for p in v["pillars"] if p["core"]], ["problem", "market", "value", "economics", "distribution"])
-        self.assertEqual(v["next_bet"]["pillar"], "economics")
+        self.assertEqual(v["next_bet"]["pillar"], "problem")  # X1 covers economics alone, so the planner gives every step a new id
 
 
 class LiveStateTests(ServerMixin, unittest.TestCase):

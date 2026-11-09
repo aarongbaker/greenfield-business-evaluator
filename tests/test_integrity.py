@@ -248,7 +248,9 @@ class NextSteps(ReceiptRules):
         data = sample()
         data["pillars"]["economics"]["evidence"] = 0
         data["experiments"] = [{"id": "EXP-1", "pillars": ["timing"], "hypothesis": "done"}, {"id": "EXP-2", "pillars": ["economics"], "hypothesis": "next"}]
-        self.assertIn("EXP-2", scorer.score(data, scorer.validate(data)[1])["next_step"])
+        step = scorer.score(data, scorer.validate(data)[1])["next_step"]
+        self.assertNotIn("EXP-1", step)  # its pillar is not missing evidence; the planner names a new experiment instead
+        self.assertIn("greenfield plan --add-experiments", step)
 
     def test_blocker_comes_before_experiments(self):
         data = sample()

@@ -502,7 +502,7 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
         stale = (_stat(dec) or (0,))[0] < newest
     qs, es, d = result["quality_scores"], result["evidence_scores"], result["decision"]
     exp = result.get("next_experiment")
-    bet = {"id": safe_text(exp["id"], 20), "text": safe_text(exp["hypothesis"], 200), "pillar": exp["pillar"]} if exp else None
+    bet = {"id": safe_text(exp["id"] or exp["entry"], 20), "text": safe_text(exp["hypothesis"], 200), "pillar": exp["pillar"] or exp["gate"]} if exp else None
     rq = shlex.quote(str(ASSETS / rd) if meta.get("demo") else rd)
     rescore = f"greenfield score {rq}/evaluation.json --json --output {rq}/decision.json"
     unassessed = [p for p, q in qs.items() if q is None]

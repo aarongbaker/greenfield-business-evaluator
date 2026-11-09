@@ -425,20 +425,26 @@ def failed_gates(facts, missing):
     return out
 
 
-def next_experiment(result, data):
-    """First experiment with a pillar still missing core evidence, with that pillar; or None (W50 replaces this rule)."""
-    gaps = result["missing_core_behavior_evidence"]
-    for exp in data.get("experiments") or []:
-        if isinstance(exp, dict) and nonempty_str(exp.get("hypothesis")):
-            hit = [p for p in gf_materials.exp_pillars(exp) if p in gaps]
-            if hit:
-                return {"id": exp.get("id") or "the next experiment", "pillar": hit[0], "hypothesis": exp["hypothesis"]}
-    return None
+def next_experiment(route):
+    """The top planner route's first step (W40/W50), or None."""
+    if not route or not route["steps"]:
+        return None
+    s = route["steps"][0]
+    return {"id": s["experiment_id"], "new": s["new_experiment"], "entry": s["as"], "title": s["title"], "pillars": s["pillars"],
+            "pillar": (s["pillars"] or [None])[0], "gate": s["gate"], "hypothesis": s.get("hypothesis") or s["title"]}
 
 
-def score(data, warnings):
-    facts = getattr(warnings, 'facts', {})
-    # Contract: only call after validate(data) returned no errors (main() and score_file() do).
+def findings_cap(result):
+    """W41: evidence is in, nothing else is outstanding, and no planner route reaches 75: the findings hold the score."""
+    qs, total = result["quality_scores"], result["weighted_quality_0_to_100"]
+    return (result["decision"] == "VALIDATE_BEFORE_BUILD" and result["route"] is None and not result["missing_core_behavior_evidence"]
+            and not _to_assess(result) and not result["missing_pilot_gates"] and not result["source_review_pending"]
+            and not result["unresolved_plausible_fatal_blockers"] and not any("ledger reattest" in w for w in result["warnings"])
+            and (total < 75 or any(qs[p] < 3 for p in CORE)))
+
+
+def _total_and_decision(data, facts, warnings):
+    """The pure scoring core: total, verdict and the Proceed checks. The planner (W50) evaluates routes only through this."""
     pillars = data["pillars"]
     qs = {p: pillars[p].get("quality") for p in PILLAR_WEIGHTS}  # missing quality == null
     ev = {p: pillars[p]["evidence"] for p in PILLAR_WEIGHTS}
@@ -474,6 +480,18 @@ def score(data, warnings):
     else:
         decision = "VALIDATE_BEFORE_BUILD"
         reason = "Proceed only with experiments targeted at the weakest decision-critical assumptions."
+    return {'qs': qs, 'ev': ev, 'complete': complete, 'profile_name': profile_name, 'weights': weights, 'total': total, 'avg_ev': avg_ev,
+            'fatal': fatal, 'possible_fatal': possible_fatal, 'web': web, 'missing_gates': missing_gates, 'unconfirmed': unconfirmed,
+            'receipt_gaps': receipt_gaps, 'source_risk': source_risk, 'decision': decision, 'reason': reason}
+
+
+def score(data, warnings):
+    facts = getattr(warnings, 'facts', {})
+    # Contract: only call after validate(data) returned no errors (main() and score_file() do).
+    c = _total_and_decision(data, facts, warnings)
+    qs, ev, complete, profile_name, weights, total, avg_ev = c['qs'], c['ev'], c['complete'], c['profile_name'], c['weights'], c['total'], c['avg_ev']
+    fatal, possible_fatal, web, missing_gates, receipt_gaps = c['fatal'], c['possible_fatal'], c['web'], c['missing_gates'], c['receipt_gaps']
+    source_risk, decision, reason = c['source_risk'], c['decision'], c['reason']
     gaps = [p for p in CORE if qs[p] is None or ev[p] < 3]
     if missing_gates:
         warnings.append('Unmet business-model pilot gates: '+', '.join(missing_gates))
@@ -512,7 +530,15 @@ def score(data, warnings):
         "deprecated_fields": DEPRECATED_FIELDS,
         "disclaimer": "Heuristic triage, not a probability of commercial success or legal approval."
     }
-    result["next_experiment"] = next_experiment(result, data)
+    route, unraisable = None, []
+    if decision == "VALIDATE_BEFORE_BUILD":
+        import gf_plan  # inside the function: gf_plan imports this module
+        route, unraisable = gf_plan.choose(data, facts, result["warnings"])
+        route = gf_plan.summary(route)
+    result["route"] = route
+    result["next_experiment"] = next_experiment(route)
+    result["findings_cap"] = findings_cap(result)
+    result["gap"] = _verdict_gap(result, unraisable)
     result["headline"] = headline(result, data)
     result["next_step"] = next_step(result, data)
     return result
@@ -560,6 +586,11 @@ def headline(result, data):
         text = "Older receipts have no evaluation binding: re-record them before a pilot"
     elif _to_assess(result):
         text = "Re-assess findings from your new receipts, then re-score"
+    elif result.get("findings_cap"):
+        low = [p for p in CORE if qs[p] < 3]
+        total = result["weighted_quality_0_to_100"]
+        text = (f"Evidence is in and findings hold quality at {total}/100, below the 75 bar: stop or reframe" if total < 75
+                else f"Evidence is in and quality on {names(low)} is below 3: stop or reframe")
     elif any(qs[p] < 3 for p in CORE):
         text = f"Quality is weak on {names(p for p in CORE if qs[p] < 3)}: fix the offer before a pilot"
     elif result["missing_pilot_gates"]:
@@ -577,9 +608,17 @@ def _to_assess(result):
     return [g["pillar"] for g in result.get("receipt_gaps", []) if g["key"].startswith("assess:")]
 
 
+STOP_STEP = 'Your experiments ran and the findings stay below the bar; stop, or reframe with greenfield start --new --idea "<new framing>".'
+
+
 def _experiment_step(nxt):
-    short_form = f"Run {nxt['id']} for {nxt['pillar']}, record it with greenfield evidence add, then re-score."
-    long_form = f"Run {nxt['id']} for {nxt['pillar']} ({nxt['hypothesis']}), record it with greenfield evidence add, then re-score."
+    target = f"for {names(nxt['pillars'])}" if nxt["pillars"] else f"for gate {nxt['gate']}"
+    if not nxt["id"]:
+        return f"Record a {nxt['entry']} receipt {target} with greenfield evidence add, then re-score."
+    if nxt["new"]:
+        return f"Add {nxt['id']} ({nxt['title']}) {target} with greenfield plan --add-experiments, run it, record it with greenfield evidence add, then re-score."
+    short_form = f"Run {nxt['id']} {target}, record it with greenfield evidence add, then re-score."
+    long_form = f"Run {nxt['id']} {target} ({nxt['hypothesis']}), record it with greenfield evidence add, then re-score."
     return long_form if len(long_form) <= 200 else short_form
 
 
@@ -599,7 +638,7 @@ def next_step(result, data):
     if result["unresolved_plausible_fatal_blockers"]:
         return f"Confirm or resolve blocker {result['unresolved_plausible_fatal_blockers'][0]} with sourced evidence, then re-score."
     if result["failed_core"]:
-        return 'Your experiments ran and the findings stay below the bar; stop, or reframe with greenfield start --new --idea "<new framing>".'
+        return STOP_STEP
     if result["failed_gates"]:
         return f"{result['failed_gates'][0]} came back fail: change the plan and retest it, or stop or reframe."
     nxt = result.get("next_experiment")
@@ -614,6 +653,10 @@ def next_step(result, data):
         return "Re-record older receipts with `greenfield evidence add`, then re-score."
     if _to_assess(result):
         return f"Re-assess findings from your new receipts, run `greenfield evidence assessed {' '.join(_to_assess(result))}`, then re-score."
+    if nxt:
+        return _experiment_step(nxt)
+    if result.get("findings_cap"):
+        return STOP_STEP
     if result["missing_pilot_gates"]:
         return f"Link reviewed evidence to pilot gate {result['missing_pilot_gates'][0]}, then re-score."
     if result["source_review_pending"]:
@@ -622,8 +665,13 @@ def next_step(result, data):
 
 
 def verdict_gap(result):
+    """Unmet PROCEED_TO_BOUNDED_PILOT requirements, as score() stored them (W50); recomputed for an older decision.json."""
+    return result["gap"] if "gap" in result else _verdict_gap(result)
+
+
+def _verdict_gap(result, unraisable=()):
     """Unmet PROCEED_TO_BOUNDED_PILOT requirements, by the same rules as score(): dicts with key, text and, for pillar
-    fields, pillar/field/current/needed. Empty when already proceeding; only the blockers when one is confirmed fatal."""
+    fields, pillar/field/current/needed and by_experiment. Empty when already proceeding; only the blockers when one is confirmed fatal."""
     if result["decision"] == "PROCEED_TO_BOUNDED_PILOT":
         return []
     if result["confirmed_fatal_blockers"]:
@@ -633,8 +681,12 @@ def verdict_gap(result):
     need = {p: max(3 if p in CORE or qs[p] is None else 0, qs[p] or 0) for p in qs}
     while round(sum(weights[p] * need[p] / 5 for p in weights), 1) < 75:
         need[max((p for p in need if need[p] < 5), key=lambda p: (weights[p], -need[p]))] += 1
-    item = lambda p, f, cur, n: {"key": f"{p}.{f}", "pillar": p, "field": f, "current": cur, "needed": n,
-                                 "text": f"{p} {f} {'not assessed' if cur is None else cur} → {n}"}
+    def item(p, f, cur, n):
+        out = {"key": f"{p}.{f}", "pillar": p, "field": f, "current": cur, "needed": n, "text": f"{p} {f} {'not assessed' if cur is None else cur} → {n}"}
+        if f == "quality" and cur is not None:  # W49: quality is a finding, so the gap is an investigation
+            out["text"] = f"{p} quality would need to reach {n} (now {cur}): only new research evidence cited in {p} can change it"
+            out["by_experiment"] = p not in unraisable
+        return out
     out = [item(p, "quality", None, need[p]) for p in qs if qs[p] is None]
     if not result["as_of"] or result["project"].startswith("REPLACE_"):
         out.append({"key": "started", "text": "start the evaluation"})
@@ -657,10 +709,11 @@ def gap_text(gap):
     groups, rest = {}, []
     for i in gap:
         if "field" in i:
-            groups.setdefault((i["field"], i["needed"]), []).append(i["pillar"])
+            groups.setdefault((i["field"], i["needed"], i.get("by_experiment", True)), []).append(i["pillar"])
         else:
             rest.append(i["text"])
-    parts = [f"{f} {n}: {', '.join(ps)}" for (f, n), ps in sorted(groups.items(), key=lambda kv: (kv[0][0] != "quality", -kv[0][1]))]
+    parts = [f"{f} {n}: {', '.join(ps)}" + ("" if by else " (not reachable by another experiment)")
+             for (f, n, by), ps in sorted(groups.items(), key=lambda kv: (kv[0][0] != "quality", -kv[0][1], not kv[0][2]))]
     return "; ".join(parts + rest)
 
 

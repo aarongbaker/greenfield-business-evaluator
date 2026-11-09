@@ -34,6 +34,7 @@ Exit codes: 0 success, 1 a negative result you asked about (for example a broken
 - [`greenfield evidence`](#greenfield-evidence): bring your own materials: record receipts and link them
 - [`greenfield ledger`](#greenfield-ledger): record and verify the hash-chained experiment ledger
 - [`greenfield score`](#greenfield-score): validate and score an evaluation (text on a terminal, JSON when piped)
+- [`greenfield plan`](#greenfield-plan): the cheapest receipts that reach a target score with Proceed (writes nothing unless --add-experiments)
 - [`greenfield portfolio`](#greenfield-portfolio): rank several scored ideas against each other
 - [`greenfield doctor`](#greenfield-doctor): check your setup and print the command that fixes each problem
 - [`greenfield report`](#greenfield-report): write the verdict callout and scorecard at the top of DECISION.md from decision.json
@@ -613,6 +614,25 @@ Validate and score an evaluation (text on a terminal, JSON when piped).
 ```text
 greenfield score research/greenfield/my-idea/evaluation.json
 greenfield --json score evaluation.json --output decision.json
+```
+
+## greenfield plan
+
+The cheapest receipts that reach a target score with Proceed (writes nothing unless --add-experiments).
+
+| Option | What it does |
+| --- | --- |
+| `evaluation` | evaluation.json (default: the active run's) |
+| `--run ID` | run id (default: the active run) |
+| `--target TARGET` | score to reach (default 75) (one of: 75, 90, 100) |
+| `--profile PROFILE` | what-if: plan under another profile without editing the file (one of: bootstrapped_saas, general, marketplace, regulated, services, venture_startup) |
+| `--top TOP` | how many routes to show (default 3) |
+| `--add-experiments` | write the top route's new experiments into evaluation.json |
+
+```text
+greenfield plan
+greenfield plan research/greenfield/my-idea/evaluation.json --target 90
+greenfield plan --add-experiments
 ```
 
 ## greenfield portfolio
