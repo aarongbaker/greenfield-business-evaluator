@@ -480,14 +480,53 @@ class DecisionTests(ServerMixin, unittest.TestCase):
         demo = observe.new_run(self.root, "demo idea", "demo", demo=True)
         v = observe.decision_view(self.root, demo)
         steps = v["steps"]
-        self.assertTrue(steps[0].startswith("**Waitlist from a cold list** (shows whether the problem is real and enough buyers exist). Email 300 people"), steps[0])
-        self.assertIn("It passes if at least 15 of the 300 sign up (5%).", steps[0])
-        self.assertIn("Repeat the test above with 300 different people", steps[1])
+        self.assertIn("greenfield sources check", steps[0])  # sources before experiments, as in docs/founder-journey.md
+        self.assertTrue(steps[1].startswith("**Waitlist from a cold list** (shows whether the problem is real and enough buyers exist). Email 300 people"), steps[1])
+        self.assertIn("It passes if at least 15 of the 300 sign up (5%).", steps[1])
+        self.assertIn("Repeat the test above with 300 different people", steps[2])
+        self.assertFalse(any("lower" in t for t in steps))  # one instruction everywhere: re-assess after the tests
         self.assertFalse(any(w in " ".join(steps) for w in ("EXP-", "receipt", "pillar")))
         self.assertEqual(steps[-1], "When the results are in, run `greenfield score` to update this verdict.")
         self.assertFalse(any("--add-experiments" in t for t in steps))  # the demo never writes into its bundled files
         self.assertEqual(v["next_step"]["command"], "greenfield plan")
         self.assertTrue(v["why"].startswith("To reach a Proceed verdict you need a passed customer test on each of the 5 core questions (0 done so far)"), v["why"])
+
+    def test_points_add_up_to_the_score_for_every_profile(self):
+        from gf_profiles import PROFILES
+        self.link()
+        data = json.loads(DEMO_EVAL.read_text())
+        for profile in PROFILES:
+            data["project"]["business_model"] = profile
+            self.ev.write_text(json.dumps(data))
+            observe._decision_cache.clear()
+            v = self.view()
+            self.assertEqual(v["state"], "ok", (profile, v["errors"]))
+            self.assertAlmostEqual(sum(p["points"] for p in v["pillars"]), v["scores"]["weighted_quality"], delta=0.1, msg=profile)
+        data["pillars"]["timing"]["quality"] = None
+        self.ev.write_text(json.dumps(data))
+        observe._decision_cache.clear()
+        v = self.view()
+        self.assertEqual(v["state"], "ok", v["errors"])
+        self.assertIsNone(next(p for p in v["pillars"] if p["key"] == "timing")["points"])  # not assessed earns no points, not zero
+
+    def test_progress_counts_passed_and_failed_tests(self):
+        import gf_materials
+        demo = observe.new_run(self.root, "demo idea", "demo", demo=True)
+        v = observe.decision_view(self.root, demo)
+        self.assertEqual({k: v["progress"][k] for k in ("next", "total", "passed", "failed")}, {"next": 1, "total": 3, "passed": 0, "failed": 0})
+        real = gf_materials.analyze
+
+        def with_results(*args, **kw):
+            facts = real(*args, **kw)
+            facts["counted"] = [*facts["counted"], *({"id": f"R{i}", "kind": "signup", "pillar_ids": [], "result": r} for i, r in enumerate(("pass", "fail")))]
+            return facts
+        observe._decision_cache.clear()
+        with mock.patch.object(gf_materials, "analyze", with_results):
+            g = observe.decision_view(self.root, demo)["progress"]
+        self.assertEqual((g["next"], g["passed"], g["failed"]), (2, 1, 1))
+        self.ev.write_text("{}")
+        self.link()
+        self.assertNotIn("progress", self.view())  # no verdict, no route, no line
 
     def test_next_step_commands_reference_existing_paths(self):
         import shlex

@@ -134,7 +134,11 @@ def fetch_public(url, resolver=None, connector=None, context=None):
                 raise RuntimeError(f'Unsupported document type ({mime}); review manually')
             if response.getheader('Content-Encoding','identity').lower() not in ('','identity'):
                 raise RuntimeError('Unsupported content encoding; review manually')
-            try:blob=response.read(MAX_BYTES+1)
+            blob=b''
+            try:
+                while len(blob)<=MAX_BYTES and (chunk:=response.read1(65536)):  # read1 returns per packet, so a slow drip still meets the budget
+                    blob+=chunk
+                    if _clock()>deadline:raise RuntimeError(f'Timed out after {BUDGET}s')
             except (http.client.HTTPException, TimeoutError, OSError) as err:
                 raise RuntimeError('Connection failed or timed out') from err
             if len(blob)>MAX_BYTES:
@@ -159,7 +163,7 @@ def normal(text):
 
 
 def analyze(data, *, allow_network=False, fetcher=None, as_of=None, stale_days=730):
-    claims=data.get('claims',[])
+    claims=[c for c in data.get('claims') or [] if isinstance(c,dict)]  # the scorer reports malformed claims; skip them here
     date=dt.date.fromisoformat(as_of) if as_of else dt.date.today()
     findings=[];cache={}; origins=defaultdict(list)
     for claim in claims:

@@ -17,10 +17,10 @@ By default the demo is a snapshot one minute into a run: five specialists done, 
 
 ## Reading the dashboard
 
-- **Verdict** (top left) is recomputed from `evaluation.json`: the decision, the quality score out of 100, average proof and blockers. The map places each pillar by quality and proof; the shaded corner is where Proceed needs the five core pillars to be. "To proceed" lists what is missing. Hover the next bet to see the pillar it would move.
+- **Verdict** (top left) is recomputed from `evaluation.json`: the decision, the quality score out of 100, average proof and blockers. The bar shows the score against the 75 needed to proceed. Under it, the five core questions each show the stage they have reached (researched, tested with customers, paid) and the numbered step that would move them on; open one for its claims. Above the list, one line says which test is next, how many have passed and failed, and roughly how many weeks of testing are left. The line under the list says what a Proceed verdict still needs, and "Next steps" lists what to do in order.
 - **Specialists** (top right) is one lane per specialist on an elapsed-time axis. Ticks are tool calls (search, fetch, read), green dots are sources and a red ✕ is a failed tool. Bars show elapsed time, never estimated progress.
-- **Pillars** shows quality and proof for each pillar. Hover a column heading for what it means; open a row for its claims, source checks and ledger receipts.
-- **Log** is the event stream, newest at the bottom. Scrolling up pauses it; `f` or the "new events" button follows again.
+- **Pillars** breaks the score down. The bar across the top is the score split by pillar, with a mark at 75. Each row shows the points a pillar earned out of the points it can earn (its weight times its quality, divided by 5), its proof level and the question it answers. The pillar with the most points still to gain is listed first. Proof is the same 0 to 5 scale the commands call evidence. Hover a column heading for what it means; open a row for its claims, source checks and ledger receipts.
+- **Activity log** is the event stream, newest at the bottom. Scrolling up pauses it; `f` or the "new events" button follows again.
 
 Click a specialist or pillar, or press `j`/`k` and Enter, to open its details. Press `?` for all keys.
 
@@ -73,7 +73,7 @@ greenfield status
 
 `greenfield task complete --role gf-market --artifact <file>` is run only after a real report is saved. Agents may also record a `source_seen` or `artifact_created` event with `greenfield event emit`; a recorded source is not a verified one.
 
-Cost stays "Not reported" unless the host reports tokens and you set your own blended rate. It is an estimate, not a bill:
+Cost is not shown unless the host reports tokens and you set your own blended rate. It is an estimate, not a bill:
 
 ```bash
 greenfield task set-rate --usd-per-million-tokens 5

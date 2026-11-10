@@ -204,11 +204,7 @@ def _save(ev, data):
 
 
 def _events(folder):
-    return gf_ledger.read_ledger(folder / gf_ledger_name())
-
-
-def gf_ledger_name():
-    return "experiment-ledger.jsonl"
+    return gf_ledger.read_ledger(folder / gf_ledger.LEDGER_NAME)
 
 
 README = """Materials for this evaluation.
@@ -258,10 +254,15 @@ def setup_folders(folder):
         note.write_text(README, encoding="utf-8")
 
 
+def refuse_demo(folder):
+    """The bundled demo folders ship with the tool: nothing writes into them."""
+    if Path(folder).name in RESERVED:
+        raise GFError(f"{Path(folder).name} is reserved for the bundled demo", hint="greenfield start --idea '...'")
+
+
 def init(folder, ev):
     """Give an older folder an evaluation_id and the materials folders; safe to repeat."""
-    if folder.name in RESERVED:
-        raise GFError(f"{folder.name} is reserved for the bundled demo", hint="greenfield start --idea '...'")
+    refuse_demo(folder)
     setup_folders(folder)
     data = load_json(ev)
     if data.get("evaluation_id") in RESERVED_IDS:
@@ -324,7 +325,7 @@ def _guard_raw(path):
 def _other_runs(folder, sha, rows):
     """Slugs/ids in sibling runs that already recorded this file or most of its rows (Decision 1)."""
     out = []
-    for ledger in sorted(folder.parent.glob("*/" + gf_ledger_name())):
+    for ledger in sorted(folder.parent.glob("*/" + gf_ledger.LEDGER_NAME)):
         if ledger.parent == folder:
             continue
         try:
@@ -420,12 +421,13 @@ def add(args):
     if reused:
         preview["previously recorded for"] = ", ".join(reused)
     try:
-        event = gf_ledger.append(folder / gf_ledger_name(), kind, project, hypothesis, outcome, str(target), args.attester, observed, "", pillars, "", args.experiment or "",
+        event = gf_ledger.append(folder / gf_ledger.LEDGER_NAME, kind, project, hypothesis, outcome, str(target), args.attester, observed, "", pillars, "", args.experiment or "",
                                  confirm=gf_ledger.tty_confirm, extra=fields, preview=preview)
-    except Exception:
+    except BaseException:  # Ctrl-C at the prompt too: receipts/ holds only recorded files
         if made:
             target.unlink(missing_ok=True)
         raise
+    data = load_json(ev)  # the assistant may have edited it while the person typed the code
     effects = _apply(data, event, pillars, gate, args.result)
     _save(ev, data)
     closes = f"; closes {gate}" if gate and args.result == "pass" else ""
@@ -522,6 +524,7 @@ def experiment_add(args):
 
 def assessed(args):
     folder, ev = _run(args)
+    refuse_demo(folder)
     data = load_json(ev)
     stamp = dt.datetime.now(dt.timezone.utc).isoformat()
     for p in args.pillars:

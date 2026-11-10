@@ -230,6 +230,18 @@ class RunGuardTests(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
         self.assertIn("No active run", r.stderr)
 
+    def test_demo_run_never_writes_into_the_bundled_files(self):
+        demo = ROOT / "skill" / "assets" / "demo-research"
+        before = {p.name: p.read_bytes() for p in demo.iterdir()}
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(gf("demo", cwd=d).returncode, 0)
+            self.assertEqual(gf("score", cwd=d).returncode, 0)  # scored, not saved
+            for args in (("plan", "--add-experiments"), ("evidence", "assessed", "problem"), ("sources", "check")):
+                r = gf(*args, cwd=d)
+                self.assertEqual(r.returncode, 2, args)
+                self.assertIn("reserved for the bundled demo", r.stderr)
+        self.assertEqual({p.name: p.read_bytes() for p in demo.iterdir()}, before)
+
     def test_start_and_demo_refuse_while_a_run_is_active(self):  # A9
         rid = json.loads(gf("--json", "--project", str(self.p), "start", "--idea", "Real").stdout)["run_id"]
         active = self.p / ".greenfield-observe" / "active.json"

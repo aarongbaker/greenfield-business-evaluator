@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gf_common import GFError, VERSION, report  # noqa: E402
 import gf_observe  # noqa: E402
 import gf_guard  # noqa: E402
-from gf_ledger import ALLOWED as LEDGER_KINDS  # noqa: E402
+from gf_ledger import ALLOWED as LEDGER_KINDS, LEDGER_NAME  # noqa: E402
 import gf_profiles  # noqa: E402
 import gf_materials  # noqa: E402
 from gf_profiles import PROFILES  # noqa: E402
@@ -261,11 +261,19 @@ def h_ingest(args):
     return {"captured": gf_observe.ingest_codex(args.project, _rid(args), sys.stdin)}
 
 
+def _own_output(*paths):
+    """Refuse an --output that would replace an evaluation or a signed file (the ledger, its history, the source report)."""
+    for p in paths:
+        if p and Path(p).name in gf_guard.SIGNED_FILES | {"evaluation.json"}:
+            raise GFError(f"--output would overwrite {Path(p).name}", path=p, hint="choose another file name, such as decision.json")
+
+
 def h_sources(args):
     import gf_evidence
     if args.evaluation is None or args.output is None:
         ctx = _ctx(args)
         args.evaluation, args.output = args.evaluation or ctx["evaluation"], args.output or ctx["verification"]
+    gf_materials.refuse_demo(Path(args.output).resolve().parent)
     return gf_evidence.check(args.evaluation, args.output, args.allow_network, args.stale_days, args.force)
 
 
@@ -284,7 +292,9 @@ def h_score(args):
     import score_project
     if args.evaluation is None:
         ctx = _ctx(args)
-        args.evaluation, args.output = ctx["evaluation"], args.output or ctx["decision"]
+        demo = ctx["research_dir"].name in gf_materials.RESERVED  # the bundled demo is scored, never written into
+        args.evaluation, args.output = ctx["evaluation"], args.output or (None if demo else ctx["decision"])
+    _own_output(args.output)
     try:
         result, errors, _ = score_project.score_file(args.evaluation)
     except Exception as exc:  # never a verdict after an unexpected error
@@ -318,7 +328,7 @@ def _track(args):
         return None
     try:
         data = json.loads(Path(args.evaluation).read_text(encoding="utf-8"))
-        facts = gf_materials.analyze(data, folder / gf_materials.gf_ledger_name(), folder) if isinstance(data, dict) else None
+        facts = gf_materials.analyze(data, folder / LEDGER_NAME, folder) if isinstance(data, dict) else None
     except (OSError, ValueError):
         return None
     if facts is None:
@@ -343,6 +353,8 @@ def t_score(result, args):
 def h_plan(args):
     import gf_plan
     ev = args.evaluation or _ctx(args)["evaluation"]
+    if args.add_experiments:
+        gf_materials.refuse_demo(Path(ev).resolve().parent)
     return gf_plan.for_cli(ev, target=args.target, top=args.top, profile=args.profile, add=args.add_experiments)
 
 
@@ -353,6 +365,7 @@ def t_plan(data, args):
 
 def h_portfolio(args):
     import gf_portfolio
+    _own_output(args.output, args.markdown)
     return gf_portfolio.run(args.manifest, args.output, args.markdown)
 
 

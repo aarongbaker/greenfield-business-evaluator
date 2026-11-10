@@ -6,7 +6,7 @@ Research-first due diligence for business ideas, run inside **Claude Code** or *
 
 Greenfield Business Evaluator is an [Agent Skill](https://agentskills.io/specification) that turns your coding assistant into a structured diligence team. Eight independent specialists research the idea, a red team challenges their findings, and a deterministic scorer produces a go/no-go recommendation backed by an auditable evidence trail.
 
-![Mission Control showing a labelled demo run: the Decision panel with a Validate before build verdict, pillar quality and evidence bars, and specialist counts](docs/mission-control.png)
+![Mission Control showing a labelled demo run: the Verdict panel with a Validate before build verdict, pillar quality and proof bars, and specialist counts](docs/mission-control.png)
 
 ## Why this one
 

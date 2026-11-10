@@ -59,6 +59,34 @@ class Base(unittest.TestCase):
         return self.run_cli("evidence", "add", str(file), "--as", mat, "--result", result, "--consent", "customer_terms", "--attester", "X", "--evaluation", str(self.ev), *extra)
 
 
+
+class ConcurrentEditTests(Base):
+    def test_add_keeps_an_edit_made_while_the_person_confirms(self):
+        self.start()
+
+        def confirm(summary):  # the assistant saves evaluation.json while the person types the code
+            data = self.data()
+            data["pillars"]["market"]["finding"] = "edited during the prompt"
+            self.ev.write_text(json.dumps(data))
+            gf_ledger.ensure_key()
+        with mock.patch.object(gf_ledger, "tty_confirm", confirm):
+            code, _, err = self.add(self.csv(), "--pillar", "value", "--experiment", "EXP-2")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.data()["pillars"]["market"]["finding"], "edited during the prompt")
+        self.assertEqual(self.data()["pillars"]["value"]["evidence"], 4)
+
+    def test_score_output_never_replaces_a_signed_file(self):
+        self.start()
+        self.assertEqual(self.add(self.csv(), "--pillar", "value", "--experiment", "EXP-2")[0], 0)
+        ledger = self.folder / "experiment-ledger.jsonl"
+        before = ledger.read_bytes()
+        for name in ("experiment-ledger.jsonl", "evaluation.json", "quality-history.jsonl", "source-verification.json"):
+            code, _, err = self.run_cli("score", str(self.ev), "--output", str(self.folder / name))
+            self.assertEqual(code, 2, name)
+            self.assertIn("would overwrite", err)
+        self.assertEqual(ledger.read_bytes(), before)
+
+
 class AddTests(Base):
     def test_dates_are_not_phone_numbers(self):
         f = self.root / "w.csv"

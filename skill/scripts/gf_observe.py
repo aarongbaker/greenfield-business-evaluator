@@ -239,6 +239,9 @@ def scaffold(project, args):
     slug = args.slug or slugify(args.idea, as_of)
     if not SLUG_RE.match(slug):
         raise GFError(f"slug {slug!r} must match [a-z0-9][a-z0-9-]{{0,47}}", hint="greenfield start --idea '...' --slug my-idea")
+    import gf_materials, gf_profiles
+    if slug in gf_materials.RESERVED:  # before anything is created
+        raise GFError(f"{slug} is reserved for the bundled demo", hint="greenfield start --idea '...' --slug my-idea")
     folder = resolve_inside(project, args.research_dir or f"research/greenfield/{slug}")
     ev = folder / "evaluation.json"
     if ev.exists():
@@ -253,9 +256,6 @@ def scaffold(project, args):
             data["project"][key] = value
     data["execution"].update(mode="not_started", depth=args.depth)
     data["evidence_ledger"], data["verification_report"] = "experiment-ledger.jsonl", "source-verification.json"
-    import gf_materials, gf_profiles
-    if slug in gf_materials.RESERVED:
-        raise GFError(f"{slug} is reserved for the bundled demo", hint="greenfield start --idea '...' --slug my-idea")
     data["evaluation_id"] = "eval-" + uuid4().hex[:8]
     data["pilot_gates"] = gf_profiles.describe(data["project"].get("business_model") or "general")["pilot_gates_skeleton"]
     gf_materials.setup_folders(folder)
@@ -348,7 +348,7 @@ def current_state(project, run_id, since=None):
         if e.get("provider"):
             a["provider"] = e["provider"]
         if kind == "agent_started":
-            a.update(status="running", started_at=e.get("timestamp"), ended_at=None, activity="Agent started")
+            a.update(status="running", started_at=e.get("timestamp"), ended_at=None, activity="Starting")
             started.add(name)
         elif kind == "agent_completed":
             a.update(status="completed", ended_at=e.get("timestamp"), activity="Finished research")
@@ -360,7 +360,7 @@ def current_state(project, run_id, since=None):
             a["activity"] = "Using " + (e.get("tool") or "tool")
         elif kind == "source_seen":
             a["sources"] += 1
-            a["activity"] = "Source recorded"
+            a["activity"] = "Found a source"
         elif kind in ("tool_failed", "warning"):
             a["errors"] += 1
             a["activity"] = e.get("summary") or "Tool warning"
@@ -454,17 +454,20 @@ def _command(result, rescore, demo):
 
 
 def _steps(result, step, demo=False):
-    """The founder's to-do list: the planner's route while one is open, else the scorer's single next step.
+    """The founder's to-do list and {pillar: the step that tests it}: the planner's route while one is open, else the scorer's single next step.
     Written to procedure style: one action per step, goal first, no internal terms (pillar, receipt, gate ids)."""
     from score_project import names, plain
     route = result.get("route")
     if result["decision"] != "VALIDATE_BEFORE_BUILD" or not route or step != result["next_step"]:
-        return [step]
+        return [step], {}
     import gf_plan
     cat = {e["id"]: e for e in gf_plan.catalog()}
     new = any(s["new_experiment"] for s in route["steps"]) and not demo  # never write into the bundled demo
     out = ["Add the tests below to your project: run `greenfield plan --add-experiments`."] if new else []
-    seen = set()
+    if result["source_review_pending"]:  # same order as docs/founder-journey.md: sources before experiments
+        out.append("Check that the web pages your research cites say what it claims: run `greenfield sources check --allow-network`, "
+                   "then `greenfield evidence status`, and confirm each claim with the command it shows.")
+    seen, tests = set(), {}
     for s in route["steps"]:
         e = cat.get(s["entry"], {})
         goal = " and ".join(x for x in (s["pillars"] and f"shows {plain(s['pillars'])}", s["gate"] and f"closes gate {s['gate']}") if x)
@@ -472,21 +475,20 @@ def _steps(result, step, demo=False):
                if s["title"] in seen and s["entry"] == "signups" else e.get("how", ""))
         seen.add(s["title"])
         out.append(f"**{s['title']}** ({goal}). {how}" + (f" It passes if {e['pass_hint']}." if e.get("pass_hint") else ""))
-    out.append("After each test, record whether it passed or failed against the mark above, not a new one. "
+        for p in s["pillars"]:  # the checklist points each question at the first step that tests it
+            tests.setdefault(p, {"n": len(out), "title": s["title"]})
+    out.append("After each test, record whether it passed or failed. Judge it against the pass mark in its step, and do not change the mark afterwards. "
                "`greenfield plan` shows the exact commands, including how to remove emails first.")
     qs = result["quality_scores"]
     high = [p for p, q in route["quality_targets"].items() if qs.get(p) is not None and q < qs[p]]
     if high:
         them = "them" if len(high) > 1 else "it"
-        out.append(f"Your research scored {names(high)} above 3 out of 5 with no customer test behind {them}, which blocks a Proceed verdict. "
-                   f"Ask your assistant to lower {them} to 3, or test {them} too.")
-    if result["source_review_pending"]:
-        out.append("Check that the web pages your research cites say what it claims: run `greenfield sources check --allow-network`, "
-                   "then `greenfield evidence status`, and confirm each claim with the command it shows.")
+        out.append(f"Your research scored {names(high)} above 3 out of 5, which is more than the tests above can prove and blocks a Proceed verdict. "
+                   f"After the tests, ask your assistant to re-assess {them}; this plan counts on 3.")
     covered = {s["gate"] for s in route["steps"]}
     out += [f"Close pilot gate {g} with a passing test." for g in result["missing_pilot_gates"] if g not in covered]
     out.append("When the results are in, run `greenfield score` to update this verdict.")
-    return out
+    return out, tests
 
 
 def _why(result):
@@ -495,12 +497,11 @@ def _why(result):
         return ""
     from score_project import CORE
     have = len(CORE) - len(result["missing_core_behavior_evidence"])
-    total, route = result["weighted_quality_0_to_100"], result.get("route")
+    total = result["weighted_quality_0_to_100"]
     parts = [f"a passed customer test on each of the {len(CORE)} core questions ({have} done so far)"]
     if total is not None and total < 75:
         parts.append(f"a score of 75 ({total:g} now)")
-    tail = f" The tests below get there in about {route['days']} days." if route else ""
-    return "To reach a Proceed verdict you need " + " and ".join(parts) + "." + tail
+    return "To reach a Proceed verdict you need " + " and ".join(parts) + "."
 
 
 def decision_view(project, run_id):
@@ -541,7 +542,7 @@ def _decision_state(project, run_id, meta, state, **fields):
 
 
 def _decide(project, run_id, meta, base, folder, ev, dec):
-    from score_project import CORE, VERDICTS, gap_text, recompute_decision, summarize_warnings, verdict_gap
+    from score_project import ASK, CORE, VERDICTS, gap_text, recompute_decision, summarize_warnings, verdict_gap
     from gf_portfolio import stored_mismatch
     if not ev.is_file():
         return _decision_state(project, run_id, meta, "no_evaluation"), ()
@@ -583,19 +584,21 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
     warnings = summarize_warnings(result["warnings"])
     gap = verdict_gap(result)
     matrix = _matrix(data, folder, result)
+    steps, tests = _steps(result, step, meta.get("demo"))
     return {"state": "ok", "research_dir": rd, "demo": bool(meta.get("demo")), "project": safe_text(result["project"], 120),
             "verdict": {"decision": d, **VERDICTS[d], "headline": result["headline"], "reason": result["reason"]},
             "verdicts": VERDICTS,
             "scores": {"weighted_quality": result["weighted_quality_0_to_100"], "evidence_average": result["evidence_average_0_to_5"],
                        "profile": result["business_model_profile"], "fatal_blockers": len(result["confirmed_fatal_blockers"])},
-            "pillars": [{"key": r.pillar, "name": r.display, "weight": result["pillar_weights"][r.pillar], "quality": qs[r.pillar], "evidence": es[r.pillar], "core": r.pillar in CORE,
+            "pillars": [{"key": r.pillar, "name": r.display, "ask": ASK[r.pillar], "weight": result["pillar_weights"][r.pillar], "quality": qs[r.pillar],
+                         "points": None if qs[r.pillar] is None else round(result["pillar_weights"][r.pillar] * qs[r.pillar] / 5, 1), "evidence": es[r.pillar], "core": r.pillar in CORE,
                          **matrix["pillars"][r.pillar]} for r in SPECIALISTS],
-            "gates": matrix["gates"], "plan": matrix["plan"], "carried": matrix["carried"],
+            "gates": matrix["gates"], "plan": matrix["plan"], "progress": matrix["progress"], "carried": matrix["carried"],
             "attention": {"confirmed_fatal": result["confirmed_fatal_blockers"], "plausible_fatal": result["unresolved_plausible_fatal_blockers"],
                           "missing_pilot_gates": result["missing_pilot_gates"], "source_review_open": result["source_review_pending"],
                           "warnings": [safe_text(w, 200) for w in warnings[:10]], "warning_count": len(result["warnings"])},
             "gap": gap, "gap_text": gap_text(gap), "next_bet": bet, "next_step": {"text": step, "command": _command(result, rescore, meta.get("demo"))},
-            "steps": _steps(result, step, meta.get("demo")), "why": _why(result),
+            "steps": steps, "tests": tests, "why": _why(result),
             "stored": stored, "stale": stale, "errors": []}, extra
 
 
@@ -627,7 +630,10 @@ def _matrix(data, folder, result):
     kinds = Counter(s["as"] for s in route["steps"]) if route else {}
     each = ", ".join(k + (f" ×{n}" if n > 1 else "") for k, n in kinds.items())
     plan = {"text": f"To {route['total']:g} with {route['receipts']} receipts: {each}", "command": "greenfield plan"} if route else None
-    return {"pillars": pillars, "gates": gates, "plan": plan, "carried": "receipts carried across an idea change" in result["warnings"]}
+    done = Counter(e.get("result") for e in facts["counted"])
+    # the route is re-planned after every receipt, so the whole run is the tests already passed plus the ones still on it
+    progress = {"next": done["pass"] + 1, "total": done["pass"] + len(route["steps"]), "passed": done["pass"], "failed": done["fail"], "days_left": route["days"]} if route and route["steps"] else None
+    return {"pillars": pillars, "gates": gates, "plan": plan, "progress": progress, "carried": "receipts carried across an idea change" in result["warnings"]}
 
 
 def evidence_view(project, run_id, pillar):
@@ -766,8 +772,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'")
+            self.send_header("Content-Length", str(len(html)))
             self.end_headers()
-            self.wfile.write(html)
+            if self.command != "HEAD":
+                self.wfile.write(html)
             return
         if path.path == "/api/runs":
             items = []
