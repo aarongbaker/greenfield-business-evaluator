@@ -170,13 +170,15 @@ class AttestationTests(unittest.TestCase):
         self.assertFalse(errors, errors)
         self.assertEqual(scorer.score(data, warnings)["decision"], "VALIDATE_BEFORE_BUILD")
         ledger.ensure_key()
-        out = ledger.reattest(self.ledger, confirm=lambda summary: None)
-        self.assertEqual([r["action"] for r in out], ["reattested"])
+        reattest = lambda: ledger.reattest(self.ledger, confirm=lambda summary: None, adopt=lambda e: ("presale", "pass"))
+        self.assertEqual([r["action"] for r in reattest()], ["refused"])  # unbound, and this is not a legacy run (W49)
+        (self.root / "evaluation.json").write_text(json.dumps({**data, "evaluation_id": "eval-legacy01", "legacy": True}))
+        self.assertEqual([r["action"] for r in reattest()], ["adopted"])
         self.assertEqual(ledger.read_ledger(self.ledger)[-1]["artifact"]["path"], "receipt.txt")
-        errors, warnings = scorer.validate(data, self.root)
+        errors, warnings = scorer.validate({**data, "evaluation_id": "eval-legacy01"}, self.root)
         self.assertFalse(errors, errors)
-        self.assertEqual(scorer.score(data, warnings)["decision"], "VALIDATE_BEFORE_BUILD")  # still no evaluation binding (Decision 9)
-        self.assertEqual(ledger.reattest(self.ledger, confirm=lambda summary: None), [])  # idempotent
+        self.assertFalse([w for w in warnings if w.startswith("Legacy receipt")])
+        self.assertEqual(reattest(), [])  # idempotent
 
     def test_notes_need_no_signature(self):
         def refuse(summary):

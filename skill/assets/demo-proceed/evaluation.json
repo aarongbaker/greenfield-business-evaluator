@@ -1,0 +1,202 @@
+{
+  "schema_version": "2.0",
+  "evaluation_id": "eval-demo-proceed",
+  "as_of": "2026-11-01",
+  "project": {
+    "name": "SAMPLE Clinic Compliance Audits",
+    "idea": "Fixed-fee compliance audits for small dental clinics",
+    "initial_customer": "Independent dental clinics with 2 to 10 staff",
+    "geography": "US",
+    "business_type": "Services",
+    "goal": "bootstrapped",
+    "business_model": "services"
+  },
+  "execution": {
+    "web_used": true,
+    "subagents_actual": 0,
+    "mode": "single-agent fallback",
+    "customer_validation_performed": true
+  },
+  "pillars": {
+    "problem": {
+      "quality": 4,
+      "evidence": 3,
+      "finding": "SAMPLE: problem finding for the demo; fictional.",
+      "claim_ids": [],
+      "behaviors": [
+        {
+          "kind": "customer_action",
+          "description": "SAMPLE: 14 of 60 cold-emailed clinic managers booked a discovery call",
+          "observed_at": "2026-10-20",
+          "source_or_artifact": "receipts/discovery-calls.csv",
+          "verified": true,
+          "ledger_event_id": "EV-7462a7f22696"
+        }
+      ],
+      "assessed_at": "2026-11-09T23:56:42.187127+00:00"
+    },
+    "market": {
+      "quality": 4,
+      "evidence": 3,
+      "finding": "SAMPLE: market finding for the demo; fictional.",
+      "claim_ids": [
+        "C1"
+      ],
+      "behaviors": [
+        {
+          "kind": "customer_action",
+          "description": "SAMPLE: 14 of 60 cold-emailed clinic managers booked a discovery call",
+          "observed_at": "2026-10-20",
+          "source_or_artifact": "receipts/discovery-calls.csv",
+          "verified": true,
+          "ledger_event_id": "EV-7462a7f22696"
+        }
+      ],
+      "assessed_at": "2026-11-09T23:56:42.187127+00:00"
+    },
+    "value": {
+      "quality": 4,
+      "evidence": 3,
+      "finding": "SAMPLE: value finding for the demo; fictional.",
+      "claim_ids": [],
+      "behaviors": [
+        {
+          "kind": "paid_test",
+          "description": "SAMPLE: one clinic paid the full $2,400 audit fee",
+          "observed_at": "2026-10-20",
+          "source_or_artifact": "receipts/invoice-redacted.txt",
+          "verified": true,
+          "ledger_event_id": "EV-5f869e384937"
+        }
+      ],
+      "assessed_at": "2026-11-09T23:56:42.187127+00:00"
+    },
+    "economics": {
+      "quality": 4,
+      "evidence": 3,
+      "finding": "SAMPLE: economics finding for the demo; fictional.",
+      "claim_ids": [],
+      "behaviors": [
+        {
+          "kind": "paid_test",
+          "description": "SAMPLE: one clinic paid the full $2,400 audit fee",
+          "observed_at": "2026-10-20",
+          "source_or_artifact": "receipts/invoice-redacted.txt",
+          "verified": true,
+          "ledger_event_id": "EV-5f869e384937"
+        }
+      ],
+      "assessed_at": "2026-11-09T23:56:42.187127+00:00"
+    },
+    "distribution": {
+      "quality": 4,
+      "evidence": 3,
+      "finding": "SAMPLE: distribution finding for the demo; fictional.",
+      "claim_ids": [],
+      "behaviors": [
+        {
+          "kind": "customer_action",
+          "description": "SAMPLE: 5 referral intros from 2 partner accountants produced 3 calls",
+          "observed_at": "2026-10-20",
+          "source_or_artifact": "receipts/referrals.csv",
+          "verified": true,
+          "ledger_event_id": "EV-3daf49efcbd2"
+        }
+      ],
+      "assessed_at": "2026-11-09T23:56:42.187127+00:00"
+    },
+    "competition": {
+      "quality": 3,
+      "evidence": 1,
+      "finding": "SAMPLE: competition finding for the demo; fictional.",
+      "claim_ids": [],
+      "behaviors": [],
+      "assessed_at": "2026-11-09T23:56:42.187127+00:00"
+    },
+    "execution": {
+      "quality": 3,
+      "evidence": 1,
+      "finding": "SAMPLE: execution finding for the demo; fictional.",
+      "claim_ids": [],
+      "behaviors": [],
+      "assessed_at": "2026-11-09T23:56:42.187127+00:00"
+    },
+    "timing": {
+      "quality": 3,
+      "evidence": 1,
+      "finding": "SAMPLE: timing finding for the demo; fictional.",
+      "claim_ids": [],
+      "behaviors": [],
+      "assessed_at": "2026-11-09T23:56:42.187127+00:00"
+    }
+  },
+  "claims": [
+    {
+      "id": "C1",
+      "pillar": "market",
+      "classification": "fact",
+      "statement": "SAMPLE: the US has about 200,000 dentists.",
+      "source_url": "https://www.ada.org/resources/research/health-policy-institute",
+      "source_title": "SAMPLE citation",
+      "published_date": "2025-01-01",
+      "accessed_date": "2026-11-01",
+      "independent_origin": false,
+      "notes": "SAMPLE DATA"
+    }
+  ],
+  "hard_blockers": [],
+  "experiments": [
+    {
+      "id": "EXP-1",
+      "pillars": [
+        "market",
+        "problem"
+      ],
+      "hypothesis": "SAMPLE: clinic managers book calls from cold email",
+      "status": "done",
+      "success_threshold": "at least 10 calls from 60 emails"
+    },
+    {
+      "id": "EXP-2",
+      "pillars": [
+        "economics",
+        "value"
+      ],
+      "hypothesis": "SAMPLE: a clinic pays the full audit fee",
+      "status": "done",
+      "success_threshold": "one clinic pays $2,400"
+    },
+    {
+      "id": "EXP-3",
+      "pillars": [
+        "distribution"
+      ],
+      "hypothesis": "SAMPLE: accountants refer clinics",
+      "status": "done",
+      "success_threshold": "at least 3 calls from referrals"
+    }
+  ],
+  "market_model": {},
+  "evidence_ledger": "experiment-ledger.jsonl",
+  "verification_report": "source-verification.json",
+  "pilot_gates": {
+    "paid_engagement": {
+      "passed": true,
+      "evidence_ids": [
+        "EV-5f869e384937"
+      ]
+    },
+    "delivery_capacity": {
+      "passed": true,
+      "evidence_ids": [
+        "EV-dce7536bf5c4"
+      ]
+    },
+    "owner_dependence": {
+      "passed": true,
+      "evidence_ids": [
+        "EV-e79ae2a6fd49"
+      ]
+    }
+  }
+}

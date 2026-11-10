@@ -206,6 +206,12 @@ def h_dashboard(args):
 
 
 def h_demo(args):
+    if args.proceed:  # W52: score the bundled worked example only; no Mission Control run, active.json untouched
+        import gf_ledger, score_project
+        result, errors, _ = score_project.score_file(gf_ledger.DEMO_DIR / "evaluation.json")
+        if errors:
+            raise GFError(errors[0], path=gf_ledger.DEMO_DIR / "evaluation.json", hint="reinstall: the bundled demo was edited")
+        return result
     old = None if args.new else gf_observe.running_run(args.project)
     if old:
         raise gf_observe.ActiveRunError(old[0], old[1].get("idea", ""), old[1].get("created_at"))
@@ -213,6 +219,12 @@ def h_demo(args):
         print("Replaying a sample run for about 100 seconds. Watch it with `greenfield dashboard --open`; Ctrl-C stops.", file=sys.stderr, flush=True)
     rid = gf_observe.demo_run(args.project, args.replay)
     return {"run_id": rid, "activated": gf_observe.active_run(args.project) == rid}
+
+
+def t_demo(data, args):
+    if "decision" not in data:
+        return data["run_id"] + "\n"
+    return "DEMO: bundled worked example, fictional data signed with a public demo key\n" + t_score(data, argparse.Namespace(**{**vars(args), "output": None, "all_warnings": False}))
 
 
 def h_emit(args):
@@ -263,6 +275,7 @@ def h_score(args):
     except Exception as exc:  # never a verdict after an unexpected error
         raise GFError(f"internal validator error ({type(exc).__name__}: {str(exc)[:120]}). No decision was written.",
                       hint="report this with your evaluation.json") from None
+    changes = _track(args)
     if errors:
         raise GFError(errors[0] if len(errors) == 1 else f"{len(errors)} problems:\n  " + "\n  ".join(errors),
                       path=args.evaluation, hint=f"fix the field(s) above and re-run `greenfield score {args.evaluation}`")
@@ -275,7 +288,28 @@ def h_score(args):
     if args.json:
         for warning in result["warnings"]:
             print("WARNING: " + warning, file=sys.stderr)
+    if changes is not None:
+        result["change_log"] = changes
     return result
+
+
+def _track(args):
+    """W49: snapshot a run folder inside the project and return its whole change log as lines; None when not tracked."""
+    import gf_history
+    folder = Path(args.evaluation).resolve().parent
+    root = Path(getattr(args, "project", None) or ".").resolve()
+    run = (folder / gf_history.HISTORY).exists() or folder.is_relative_to(root / "research" / "greenfield")  # start/init write the first line
+    if not run or not folder.is_relative_to(root) or folder.name in gf_materials.RESERVED:
+        return None
+    try:
+        data = json.loads(Path(args.evaluation).read_text(encoding="utf-8"))
+        facts = gf_materials.analyze(data, folder / gf_materials.gf_ledger_name(), folder) if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+    if facts is None:
+        return None
+    gf_history.record(folder, data, facts["events"])
+    return gf_history.describe(gf_history.changes(folder), facts)
 
 
 def t_score(result, args):
@@ -286,7 +320,20 @@ def t_score(result, args):
     except (UnicodeEncodeError, LookupError):
         glyphs = "ascii"
     text = score_project.render_text(result, color=_color(args), glyphs=glyphs, all_warnings=args.all_warnings)
+    if result.get("change_log"):
+        text += "Changes since tracking began:\n" + "".join(f"  {line}\n" for line in result["change_log"])
     return text + (f"Saved decision.json to {args.output}\n" if args.output else "")
+
+
+def h_plan(args):
+    import gf_plan
+    ev = args.evaluation or _ctx(args)["evaluation"]
+    return gf_plan.for_cli(ev, target=args.target, top=args.top, profile=args.profile, add=args.add_experiments)
+
+
+def t_plan(data, args):
+    import gf_plan
+    return gf_plan.render(data)
 
 
 def h_portfolio(args):
@@ -404,7 +451,8 @@ def build_parser():
     p.add_argument("--open", action="store_true", help="open the dashboard in your browser")
 
     p = _cmd(sub, "demo", "create a labelled sample run to try the dashboard", [
-        "greenfield demo", "greenfield demo --new && greenfield dashboard --open", "greenfield demo --replay"], h_demo, _field("run_id"))
+        "greenfield demo", "greenfield demo --new && greenfield dashboard --open", "greenfield demo --replay", "greenfield demo --proceed"], h_demo, t_demo)
+    p.add_argument("--proceed", action="store_true", help="score the bundled worked example that reaches Proceed (DEMO data; creates no run)")
     p.add_argument("--new", action="store_true", help="create it even while a real run is active (it will not replace it)")
     p.add_argument("--replay", action="store_true", help="write the sample events in real time (about 100 seconds) so the dashboard moves")
 
@@ -473,6 +521,15 @@ def build_parser():
     p.add_argument("--output", type=Path, help="also write the decision JSON here (default with no path: decision.json beside the run's evaluation)")
     p.add_argument("--all-warnings", action="store_true", help="text mode: list every warning instead of the top 5 groups")
 
+    p = _cmd(sub, "plan", "the cheapest receipts that reach a target score with Proceed (writes nothing unless --add-experiments)", [
+        "greenfield plan", "greenfield plan research/greenfield/my-idea/evaluation.json --target 90", "greenfield plan --add-experiments"], h_plan, t_plan)
+    p.add_argument("evaluation", type=Path, nargs="?", help="evaluation.json (default: the active run's)")
+    _run_arg(p)
+    p.add_argument("--target", type=int, default=75, choices=(75, 90, 100), help="score to reach (default 75)")
+    p.add_argument("--profile", choices=sorted(PROFILES), help="what-if: plan under another profile without editing the file")
+    p.add_argument("--top", type=int, default=3, help="how many routes to show (default 3)")
+    p.add_argument("--add-experiments", action="store_true", help="write the top route's new experiments into evaluation.json")
+
     p = _cmd(sub, "portfolio", "rank several scored ideas against each other", [
         "greenfield portfolio portfolio.json --output ranking.json", "greenfield portfolio portfolio.json --output ranking.json --markdown ranking.md"], h_portfolio)
     p.add_argument("manifest", type=Path, help="portfolio manifest JSON")
@@ -496,12 +553,15 @@ def build_parser():
 def render(result, args):
     if result is None:
         return
-    if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    elif args.text:
+    if args.text and not args.json:
         sys.stdout.write(args.text(result, args))
-    else:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+    text = json.dumps(result, indent=2, ensure_ascii=False)
+    try:
+        text.encode(sys.stdout.encoding or "utf-8")
+    except (UnicodeEncodeError, LookupError):  # a cp1252 Windows console: escape instead of crashing
+        text = json.dumps(result, indent=2)
+    print(text)
 
 
 def fail(err, args):

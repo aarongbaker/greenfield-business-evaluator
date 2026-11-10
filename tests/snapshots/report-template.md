@@ -20,4 +20,6 @@ As of not started · Profile: general · Research: no live web, not started · S
 | Timing | 5 | ·····  not assessed | ░░░░░ 0 | Not evaluated |  |
 
 **What would change this verdict:** quality 5: problem; quality 4: market, value, economics; quality 3: distribution, competition, execution, timing; evidence 3: problem, market, value, economics, distribution; start the evaluation; run live web research
+
+How much to trust this verdict: see "How much to trust Proceed" in the greenfield README and SECURITY.md.
 <!-- greenfield:generated end -->

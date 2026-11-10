@@ -87,10 +87,10 @@ class FieldTests(unittest.TestCase):
         data["pillars"]["economics"]["evidence"] = 0
         self.assert_fields(scored(data), "VALIDATE_BEFORE_BUILD",
                            "Evidence is thin on economics and problem: test these before building",
-                           "Test economics with real customers, record it with `greenfield evidence add`, then re-score.")
+                           "Add EXP-1 (Waitlist from a cold list) for problem and market with greenfield plan --add-experiments, run it, record it with greenfield evidence add, then re-score.")
         data["experiments"] = [{"id": "X1", "pillars": ["economics"], "hypothesis": "Ten HR leads pay $50 for a benchmark"}]
         self.assertEqual(scored(data)["next_step"],
-                         "Run X1 for economics (Ten HR leads pay $50 for a benchmark), record it with greenfield evidence add, then re-score.")
+                         "Add EXP-1 (Waitlist from a cold list) for problem and market with greenfield plan --add-experiments, run it, record it with greenfield evidence add, then re-score.")
 
     def test_no_go(self):
         self.assert_fields(scorer.score_file(FIXTURES / "no-go.json")[0], "NO_GO",
@@ -131,7 +131,8 @@ class FieldTests(unittest.TestCase):
     def test_pre_w12_keys_unchanged(self):
         old = json.loads((FIXTURES / "decision-pre-w12.json").read_text())
         new = scorer.score_file(FIXTURES / "validate-before-build.json")[0]
-        drop = lambda d: {k: ([w for w in v if not w.startswith("Could not validate")] if k == "warnings" else v) for k, v in d.items()}  # message text improved in W7
+        # Message text improved in W7; W49 added the rubric warning.
+        drop = lambda d: {k: ([w for w in v if not w.startswith("Could not validate") and "above what evidence" not in w] if k == "warnings" else v) for k, v in d.items()}
         self.assertEqual(drop({k: new[k] for k in old}), drop(old))
 
 
