@@ -116,6 +116,26 @@ section{padding:20px 24px;min-width:0}
 .legend i{display:inline-block;vertical-align:middle;margin-right:5px}
 .legend .lt{width:1px;height:11px}.legend .ld{width:5px;height:5px;border-radius:50%;background:var(--ok)}
 .note{color:var(--fg-2);font-size:13px;margin:0 0 8px}
+/* graph: the same agents as the timeline, drawn as who hands work to whom; lines are stretched SVG, nodes are real buttons */
+.h #viewSw{margin-right:auto}
+.graph{display:none;grid-template-columns:auto 44px minmax(0,1fr) 44px minmax(0,1fr) 24px auto;align-items:center}
+.edges{position:relative;align-self:stretch}.edges svg{position:absolute;inset:0;width:100%;height:100%}
+.edges line{stroke:var(--line-2);stroke-width:1.5;vector-effect:non-scaling-stroke}
+.edges line.run{stroke:var(--run)}.edges line.done{stroke:var(--ok)}.edges line.fail{stroke:var(--bad)}.edges line.wait{stroke:var(--warn)}
+.edges.hold line{stroke-dasharray:4 4}
+.gcol{display:flex;flex-direction:column;min-width:0}
+.node{display:grid;grid-template-columns:14px minmax(0,1fr);column-gap:8px;align-items:baseline;width:100%;min-width:0;margin:3px 0;padding:6px 10px;border:1px solid var(--line-2);border-radius:8px;background:var(--raised);text-align:left;color:inherit;font:inherit}
+.node.plain{display:block;width:auto}
+button.node{cursor:pointer}button.node:hover,.node.sel{border-color:var(--fg-3)}
+.node .name{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node .what{display:block;grid-column:2;font-size:12px}.graph>.node span{white-space:normal}
+.node[data-s="run"]{border-color:var(--run)}.node[data-s="fail"]{border-color:var(--bad)}.node[data-s="wait"]{border-color:var(--warn)}
+.node[data-s="run"] .g{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+.flow{position:absolute;left:0;top:var(--y);width:7px;height:7px;margin:-3.5px;border-radius:50%;background:var(--ok);animation:flow .9s linear forwards}
+@keyframes flow{to{left:100%;top:50%}}
+.lanedone{display:flex;align-items:center;gap:12px;margin:0;color:var(--fg-2)}
+@media (min-width:641px){.lanes[data-view="graph"] .graph{display:grid}.lanes[data-view="graph"] .lanebox,.lanes[data-view="graph"] .legend{display:none}}
 /* pillars: the bar is the score split by pillar, each row is one pillar's share */
 .pbar{position:relative;display:flex;height:10px;border-radius:5px;background:var(--track);margin:0 0 30px}
 .pbar i{background:var(--fg-2);box-shadow:inset -2px 0 var(--bg);cursor:pointer}.pbar i:first-child{border-radius:5px 0 0 5px}
@@ -178,7 +198,7 @@ th.r .hint .tip{left:auto;right:-8px}
 .keys kbd{font:12px var(--mono);color:var(--fg)}
 .help p{color:var(--fg-2);font-size:13px;margin:14px 0 0}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
-@media (forced-colors:active){.span,.ladder i,.seg i,.sbar,.pbar,.pts,.tick{border:1px solid CanvasText}}
+@media (forced-colors:active){.span,.node,.ladder i,.seg i,.sbar,.pbar,.pts,.tick{border:1px solid CanvasText}}
 @media (max-width:1100px){main{grid-template-columns:1fr;grid-template-rows:none;grid-template-areas:"verdict" "lanes" "matrix" "log"}.verdict{border-right:0;border-bottom:1px solid var(--line)}.matrix{border-right:0;border-bottom:1px solid var(--line)}
 }
 /* a verdict panel wide enough for two columns: map with the verdict's words beside it, steps below in two columns that read down */
@@ -191,7 +211,7 @@ th.r .hint .tip{left:auto;right:-8px}
   #pillars td:first-child{white-space:normal}
   .bar{gap:10px;padding:0 12px}.lane{grid-template-columns:max-content minmax(0,1fr)}.mark .word,.clock,.kind,.conn .ctext{display:none}
   section{padding:14px 12px}
-  .axis,.nowline,.legend,.lane .track,.lane .cnt,.pts,.hide-sm{display:none}
+  .axis,.nowline,.legend,.lane .track,.lane .cnt,.pts,#viewSw,.hide-sm{display:none}
   .lanebox{margin-top:0}.crow{grid-template-columns:minmax(0,1fr)}
   .row{gap:8px}
 }
@@ -225,11 +245,13 @@ th.r .hint .tip{left:auto;right:-8px}
 </div>
 </section>
 <section class="lanes" aria-labelledby="lh">
-<div class="h"><h2 id="lh">Specialists</h2><span class="meta num" id="laneMeta"></span></div>
+<div class="h"><h2 id="lh">Specialists</h2><div class="filters" role="group" aria-label="Specialists view" id="viewSw"><button type="button" data-v="graph" aria-pressed="true">Graph</button><button type="button" data-v="timeline" aria-pressed="false">Timeline</button></div><span class="meta num" id="laneMeta"></span></div>
 <p id="hooksOff" class="note" hidden>No live signal: hooks are off, so statuses come from checkpoints only. Turn them on with <code>greenfield hooks install</code>.</p>
+<p class="lanedone" id="laneDone" hidden><span id="laneDoneText"></span><button type="button" class="iconbtn" id="laneToggle"></button></p>
+<div id="laneBody"><div class="graph" id="graph"></div>
 <div class="lanebox" id="lanebox"><div id="agents"><div class="empty">No agents have started.</div></div>
 <div class="axis" aria-hidden="true"><span></span><div class="labels" id="axis"></div><span></span><span></span></div><div class="nowline" id="nowline" hidden></div></div>
-<div class="legend" aria-hidden="true"><span><i class="lt" style="background:var(--run)"></i>search</span><span><i class="lt" style="background:var(--fg-2)"></i>fetch</span><span><i class="lt" style="background:var(--fg-3)"></i>read</span><span><i class="ld"></i>source</span><span><b style="color:var(--bad)">✕</b> failed call</span></div>
+<div class="legend" aria-hidden="true"><span><i class="lt" style="background:var(--run)"></i>search</span><span><i class="lt" style="background:var(--fg-2)"></i>fetch</span><span><i class="lt" style="background:var(--fg-3)"></i>read</span><span><i class="ld"></i>source</span><span><b style="color:var(--bad)">✕</b> failed call</span></div></div>
 </section>
 <section class="matrix" aria-labelledby="mh">
 <div class="h"><h2 id="mh">Pillars</h2><span class="meta num" id="mMeta"></span></div>
@@ -276,7 +298,7 @@ const PROOF=['nothing recorded','interviews or surveys','reviewed sources','a re
 const GLYPH={Done:['✓','done'],Failed:['✕','fail'],Running:['●','run'],Claimed:['●','run'],Quiet:['◌','wait'],Stopped:['–','none'],Queued:['○','queued']};
 const EMPTY={no_research_dir:['No research folder linked','This run does not know which research folder it produces yet, so there is no verdict to show.'],no_evaluation:['No evaluation yet','The linked folder has no evaluation.json.'],invalid:["Can't score this evaluation",'evaluation.json has input errors, so no verdict is shown.'],invalid_path:['Research folder is outside this project','The linked path leaves the project folder, so it was not read.']};
 const store={run:null,rev:null,runsTag:null,runSig:'',lastId:null,state:null,dec:null,decEtag:undefined,decAt:0,verdict:null,trail:[],lastOk:0,errDelay:1500,failing:false,retryAt:0,timer:0,busy:false,
-  seen:new Set(),groups:[],counts:{},filter:'all',marks:{},roles:[],pending:0,follow:true,say:'',lastSay:0,sayTimer:0,drawer:null,sel:-1,hover:null};
+  seen:new Set(),groups:[],counts:{},filter:'all',marks:{},roles:[],pending:0,follow:true,say:'',lastSay:0,sayTimer:0,drawer:null,sel:-1,hover:null,view:'graph',openLanes:false};
 const clock=x=>{const d=new Date(x);return isNaN(d)?'—':d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})};
 const hm=x=>{const d=new Date(x);return isNaN(d)?'—':d.toLocaleString([],{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})};
 const dur=ms=>{const s=Math.max(0,Math.floor(ms/1000)),h=Math.floor(s/3600),m=Math.floor(s/60)%60,p=n=>String(n).padStart(2,'0');return h?h+':'+p(m)+':'+p(s%60):p(m)+':'+p(s%60)};
@@ -368,6 +390,11 @@ function patchAgents(s){
     box.replaceChildren(...s.agents.map((a,i)=>{const b=document.createElement('button');b.type='button';b.className='lane';b.dataset.agent=a.name;b.dataset.i=i;
       b.innerHTML='<span class="who"><span class="g"></span><span class="name"></span></span><span class="track"></span><span class="what"></span><span class="cnt"></span>';return b}));
     box._built=s.meta.run_id;
+    const sp=s.agents.filter(a=>a.name!=='gf-redteam'),rt=s.agents.find(a=>a.name==='gf-redteam'),y=i=>((i+.5)/sp.length*100).toFixed(2);
+    const node=a=>`<button type="button" class="node" data-agent="${esc(a.name)}" data-i="${s.agents.indexOf(a)}"><span class="g"></span><span class="name"></span><span class="what"></span></button>`;
+    const fan=(id,from)=>`<div class="edges"${id}><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${sp.map((a,i)=>`<line data-e="${esc(a.name)}" x1="0" y1="${from?y(i):50}" x2="100" y2="${from?50:y(i)}"/>`).join('')}</svg></div>`;
+    $('graph').innerHTML=`<div class="node plain"><span class="name">Orchestrator</span><span class="what" id="gHub"></span></div>${fan('',0)}<div class="gcol">${sp.map(node).join('')}</div>${fan(' id="gOut"',1)}${rt?node(rt):'<span></span>'}
+<div class="edges"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line id="gEnd" x1="0" y1="50" x2="100" y2="50"/></svg></div><div class="node plain"><span class="name">Verdict</span><span class="what" id="gVerdict"></span></div>`;
   }
   paintLanes();
 }
@@ -391,8 +418,19 @@ function paintLanes(){
     const what=d.label==='Done'&&a.started_at&&a.ended_at?'finished in '+dur(Date.parse(a.ended_at)-Date.parse(a.started_at)):d.label==='Queued'?(a.name==='gf-redteam'?'':'queued'):(doing||d.note||a.activity||'');
     setText(q('.what'),what.charAt(0).toUpperCase()+what.slice(1)+(att[a.name]>1?' · '+plural(att[a.name],'attempt'):''));setCls(q('.what'),'what'+(d.warn?' warn':''));setAttr(q('.what'),'title',d.note||a.activity||'');
     setText(q('.cnt'),a.sources?plural(a.sources,'source'):'');setAttr(q('.cnt'),'title',plural(a.tools,'tool call')+', '+plural(a.sources,'source')+' found');
-    setAttr(b,'aria-label',`${roleName(a.name)}: ${d.label}${what?', '+what:''}${a.errors?', '+plural(a.errors,'error'):''}`);
+    const lab=`${roleName(a.name)}: ${d.label}${what?', '+what:''}${a.errors?', '+plural(a.errors,'error'):''}`;setAttr(b,'aria-label',lab);
+    const n=$('graph').querySelector(`[data-agent="${CSS.escape(a.name)}"]`);if(!n)continue;const nq=c=>n.querySelector(c);
+    setAttr(n,'data-s',gc);setAttr(n,'aria-label',lab);setText(nq('.g'),g);setCls(nq('.g'),'g '+gc);setAttr(nq('.g'),'title',d.label);setText(nq('.name'),roleName(a.name));
+    setText(nq('.what'),[a.name==='gf-redteam'&&d.label==='Queued'?'Starts when the other '+(s.agents.length-1)+' finish':q('.what').textContent,a.sources?plural(a.sources,'source'):''].filter(Boolean).join(' · '));
+    for(const l of $('graph').querySelectorAll(`[data-e="${CSS.escape(a.name)}"]`))setAttr(l,'class',gc);
+    if(a.name==='gf-redteam')setAttr($('gEnd'),'class',gc);
   }
+  const sec=$('lh').closest('section'),shut=!!end&&!store.openLanes;setAttr(sec,'data-view',store.view);
+  for(const b of $('viewSw').querySelectorAll('[data-v]'))setAttr(b,'aria-pressed',store.view===b.dataset.v);
+  if($('gOut')){$('gOut').classList.toggle('hold',ready<s.agents.length-1);setText($('gHub'),s.status.charAt(0).toUpperCase()+s.status.slice(1));setText($('gVerdict'),store.dec&&store.dec.state==='ok'?store.dec.verdict.label:'Not scored yet')}
+  show($('laneDone'),!!end);show($('laneBody'),!shut);show($('viewSw'),!shut);
+  if(end){const sites=new Set(Object.values(store.marks).flat().filter(m=>m.k==='src').map(m=>m.label)).size;
+    setText($('laneDoneText'),'Research '+(s.status==='completed'?'finished in ':'stopped after ')+dur(end-t0)+'. '+plural(s.stats.source_events,'source')+(sites?' from '+plural(sites,'site'):'')+'.');setText($('laneToggle'),shut?'Show details':'Hide details')}
   setText($('laneMeta'),s.hooks_off?'no live signal':[done&&done+' done',run&&run+' running',queued&&queued+' queued',idle&&'quiet for '+((q=>q<3600000?Math.round(q/60000)+' min':Math.round(q/3600000)+' h')(Date.now()-last))].filter(Boolean).join(' · '));
   let lab='';for(let x=0;x<=len;x+=step)lab+=`<span style="left:${(x/len*100).toFixed(2)}%">${esc(dur(x).replace(/^00:/,'0:'))}</span>`;
   setHTML($('axis'),lab);
@@ -424,9 +462,14 @@ function tally(t){for(const f in FILTERS)if(FILTERS[f](t))store.counts[f]=(store
 function mark(e){
   const t=Date.parse(e.timestamp);if(!roleOf(e.agent)||isNaN(t))return;const list=store.marks[e.agent]||(store.marks[e.agent]=[]);
   if(e.event==='tool_started')list.push({t,k:TOOLK[e.tool]||'read'});
-  else if(e.event==='source_seen')list.push({t,k:'src',label:domain(e.url)});
+  else if(e.event==='source_seen'){list.push({t,k:'src',label:domain(e.url)});if(Date.now()-t<5000)flow(e.agent)}
   else if(/_failed$|^warning$/.test(e.event))list.push({t,k:'err',label:e.summary||'error'});
   if(list.length>600)list.splice(0,list.length-600);// shortcut: older marks drop off very long runs; lane counts stay exact
+}
+/* a new source travels its specialist's line to the red team once; never for history, hidden graphs or reduced motion */
+function flow(name){
+  const out=$('gOut'),l=out&&out.offsetWidth&&out.querySelector(`[data-e="${CSS.escape(name)}"]`);if(!l||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const d=document.createElement('i');d.className='flow';d.style.setProperty('--y',l.getAttribute('y1')+'%');d.onanimationend=()=>d.remove();out.appendChild(d);
 }
 function actionOf(e){
   const ev=e.event;
@@ -489,7 +532,7 @@ function renderDecision(v){
   const steps=v.steps||[v.next_step.text];setText($('betLbl'),steps.length>1?'Next steps':'Next step');
   setHTML($('steps'),steps.map(t=>`<li>${esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>')}</li>`).join(''));setText($('nextCmd'),v.next_step.command);
   setHTML($('prov'),'Scored from evaluation.json. '+(v.stored.present?(v.stored.matches?'<span class="ok">It matches the saved decision.json.</span>':'The saved decision.json differs.'):'No decision.json is saved yet.')+(store.trail.length>1?' Score so far: '+esc(store.trail.join(' → '))+'.':''));
-  paintRescored();patchPillars();
+  paintRescored();patchPillars();paintLanes();
   if(store.verdict&&store.verdict!==vd.decision)say('Verdict changed to '+vd.label);store.verdict=vd.decision;
   if(store.drawer&&store.drawer.pillar)openPillar(store.drawer.pillar,false);
 }
@@ -535,7 +578,9 @@ function evidenceHTML(d){
   return (rows?`<ul class="claims">${rows}</ul>`:'<p class="dim">No claims linked to this pillar.</p>')+`<p class="dim">Ledger receipts: ${d.receipts.length?esc(d.receipts.join(', ')):'none'}</p>`;
 }
 /* wiring */
-$('agents').addEventListener('click',e=>{const b=e.target.closest('[data-agent]');if(!b)return;store.sel=+b.dataset.i;openAgent(b.dataset.agent)});
+for(const box of ['agents','graph'])$(box).addEventListener('click',e=>{const b=e.target.closest('[data-agent]');if(!b)return;store.sel=+b.dataset.i;openAgent(b.dataset.agent)});
+$('viewSw').addEventListener('click',e=>{const b=e.target.closest('[data-v]');if(!b)return;store.view=b.dataset.v;try{localStorage.setItem('gf-view',store.view)}catch(err){}paintLanes()});
+$('laneToggle').onclick=()=>{store.openLanes=!store.openLanes;paintLanes()};
 for(const box of ['mapbox','pbar','pillars']){$(box).addEventListener('click',e=>{const r=e.target.closest('[data-p]');if(r)openPillar(r.dataset.p)});$(box).addEventListener('mouseover',e=>{const t=e.target.closest('[data-p]');hiPillar(t?t.dataset.p:null)});$(box).addEventListener('mouseleave',()=>hiPillar(null))}
 $('chips').addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(b)setFilter(b.dataset.f)});
 $('feed').addEventListener('scroll',()=>{const f=$('feed'),bottom=f.scrollHeight-f.scrollTop-f.clientHeight<8;if(bottom&&!store.follow)follow();else if(!bottom&&store.follow){store.follow=false;paintFeedState()}});
@@ -552,7 +597,7 @@ document.addEventListener('click',e=>{
   try{navigator.clipboard.writeText(src.textContent).then(done,()=>getSelection().selectAllChildren(src))}catch(err){getSelection().selectAllChildren(src)}});
 document.addEventListener('keydown',e=>{
   if(e.metaKey||e.ctrlKey||e.altKey||e.target.closest('select,input,textarea'))return;
-  const lanes=[...$('agents').querySelectorAll('.lane')],k=e.key;
+  const lanes=[...document.querySelectorAll($('graph').offsetWidth?'#graph [data-agent]':'#agents .lane')],k=e.key;
   if(k==='Escape'){$('help').classList.remove('open');closeDrawer()}
   else if(k==='?'){$('help').classList.toggle('open')}
   else if((k==='j'||k==='k')&&lanes.length){e.preventDefault();store.sel=((store.sel<0?(k==='j'?-1:0):store.sel)+(k==='j'?1:-1)+lanes.length)%lanes.length;lanes.forEach((l,i)=>l.classList.toggle('sel',i===store.sel));lanes[store.sel].focus()}
@@ -564,7 +609,7 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('visibilitychange',()=>{if(document.hidden)paintConn();else poll()});
 window.addEventListener('hashchange',()=>{const r=store.run;readHash();if(store.run!==r){switchRun(store.run);poll()}else setFilter(store.filter)});
 window.addEventListener('resize',paintLanes);
-let savedTheme=null;try{savedTheme=localStorage.getItem('gf-theme')}catch(e){}
+let savedTheme=null;try{savedTheme=localStorage.getItem('gf-theme');if(localStorage.getItem('gf-view')==='timeline')store.view='timeline'}catch(e){}
 applyTheme(savedTheme==='light'||savedTheme==='dark'?savedTheme:null);
 readHash();
 setInterval(()=>{paintConn();if(store.state&&!runSpan().end)paintLanes()},1000);
