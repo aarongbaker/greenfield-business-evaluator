@@ -41,6 +41,20 @@ Evidence 3 and above needs a behavior receipt in the experiment ledger, signed o
 
 An unknown pillar is left as `null`, not guessed. The weighted quality score is only computed when all eight pillars have a quality score.
 
+## The quality rubric
+
+Quality is a finding, but Proceed holds it to what the receipts show. Each receipt raises evidence to its kind's ceiling, whether the test passed or not. Its **result** sets the highest quality it supports, the pillar's **rubric level**:
+
+| Kind (`--as` examples) | Highest evidence | Rubric level on `pass` | on `mixed` | on `fail` |
+| --- | --- | --- | --- | --- |
+| `customer_action` (`signups`, `analytics`, `channel`) | 3 | 4 | 3 | 2 |
+| `paid_test`, `signed_commitment` (`presale`, `invoice`, `loi`) | 4 | 5 | 4 | 2 |
+| `feasibility_proof` (`prototype`, `memo`, `ops-record`; execution only) | 4 | 5 | 4 | 2 |
+| `repeat_purchase` (`repeat`) | 5 | 5 | 5 | 2 |
+| no receipt (interviews, surveys, reviewed sources) | 2 | 3 | | |
+
+The rubric level comes from the **newest receipt at the highest evidence level** on the pillar, so a newer `fail` caps it at 2 whatever older passes say. Quality above the rubric level is allowed in the total, but it prints as a warning on every score and blocks Proceed. Every hand change to quality, claims, blockers or gates is listed under "Changes since tracking began" until a receipt covers it.
+
 ## Weights and business-model profiles
 
 Weighted quality is `sum(weight × quality / 5)` across the pillars, out of 100. The weights depend on the business model you set in `project.business_model` (or with `greenfield start --model`):
@@ -60,7 +74,27 @@ greenfield profiles show marketplace
 greenfield profiles compare bootstrapped_saas venture_startup
 ```
 
-Pilot gates are extra conditions a profile needs before it can recommend a pilot, such as a real pricing test for a bootstrapped SaaS. Each passed gate must point at a ledger receipt or a human-reviewed source. `regulated` always needs independent professional review; the tool cannot give legal or clinical clearance.
+Pilot gates are extra conditions a profile needs before it can recommend a pilot, such as a real pricing test for a bootstrapped SaaS. `regulated` always needs independent professional review; the tool cannot give legal or clinical clearance. A gate entry in `evaluation.json` looks like this, and `greenfield evidence add --gate` or `greenfield evidence link` writes it for you:
+
+```json
+{"pilot_gates": {"pricing_test": {"passed": true, "evidence_ids": ["EV-3f2a9c01b7de"]}}}
+```
+
+Each id closes one gate only, and only with a signed `pass` result. An `EV-` id may close only a gate named when it was recorded. A claim id must be a sourced `fact` reviewed `supported` with that gate named at review time (`ledger record --kind source_review --claim-id C7 --gate jurisdiction_review`).
+
+| Gate | Accepts |
+| --- | --- |
+| `pricing_test`, `paid_engagement` | `paid_test`, `signed_commitment`, `repeat_purchase` |
+| `delivery_margin` | `feasibility_proof` (cost-to-serve record) |
+| `transaction_margin` | `feasibility_proof` (cost record), or `paid_test` recorded `--as invoice` |
+| `repeatable_channel`, `credible_growth_channel` | `customer_action`, `paid_test`, `repeat_purchase` |
+| `supply_commitments`, `demand_commitments` | `signed_commitment`, `paid_test` |
+| `liquidity_model` | `feasibility_proof`, `customer_action`, `repeat_purchase` |
+| `delivery_capacity`, `owner_dependence` | `feasibility_proof` |
+| `funding_runway` | `feasibility_proof` (runway model), `signed_commitment` (investor); no claim |
+| `venture_scale_market` | `feasibility_proof`, a reviewed claim |
+| `jurisdiction_review` | a reviewed claim, `feasibility_proof` |
+| `compliance_path`, `data_and_safety`, `professional_review` | `feasibility_proof` (a memo or compliant delivery record) |
 
 ## Verdicts
 
@@ -69,7 +103,7 @@ The scorer applies these rules in order and stops at the first that matches:
 1. **No go** if a sourced, confirmed fatal blocker has no credible remedy, whatever the scores.
 2. **Research incomplete** if there was no live web research or any pillar's quality is unknown.
 3. **Pivot** if weighted quality is below 50 and a core pillar (problem, market, value, economics or distribution) has quality 1 or less backed by evidence 3 or more.
-4. **Proceed to bounded pilot** only if weighted quality is at least 75, all five core pillars have quality 3+ and evidence 3+ from recorded behavior, no fatal blocker is open, every profile gate passed, and every source-dependent claim has a human review.
+4. **Proceed to bounded pilot** only if weighted quality is at least 75, all five core pillars have quality 3+ and evidence 3+ from `pass` or `mixed` receipts confirmed at a terminal, every quality is at or below its rubric level and was re-assessed after its newest receipt, no fatal blocker is open, every profile gate passed, and every source-dependent claim has a human review.
 5. **Validate before build** otherwise.
 
 | Verdict | Meaning |
@@ -77,12 +111,14 @@ The scorer applies these rules in order and stops at the first that matches:
 | Research incomplete | Not a launch decision yet |
 | No go | A confirmed fatal blocker overrides the score |
 | Pivot | Evidence shows a severe core weakness |
-| Validate before build | Run the next experiment before writing code |
+| Validate before build | Run the next experiment before writing code; its headline says **stop or reframe** when a core test or gate failed, or when findings cap the score |
 | Proceed to bounded pilot | Core gates met. Pilot only, not scale |
 
 Proceed to bounded pilot is meant to be rare for an idea with no customers yet. It is permission to consider a small, time-boxed pilot, not to spend money or scale. A plausible but unconfirmed fatal blocker also blocks a pilot until someone investigates it.
 
-These weights and thresholds are design choices for triage. They have not been calibrated against real business outcomes, and a score of 80 does not mean an 80% chance of success.
+`greenfield plan` lists the cheapest routes from your current scores to 75 (or `--target 90|100`) under these same rules. The [founder journey](founder-journey.md#routes-to-75) shows the typical routes for each profile and the ladder to 100.
+
+These weights and thresholds are design choices for triage: the scores are **uncalibrated triage**, not predictions. They have not been calibrated against real business outcomes, and a score of 80 does not mean an 80% chance of success.
 
 ## A worked example
 

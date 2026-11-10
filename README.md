@@ -22,7 +22,7 @@ Greenfield Business Evaluator is an [Agent Skill](https://agentskills.io/specifi
 
 ## Installation
 
-**Claude Code plugin** (skill and the nine research roles, no hooks; add the `pipx` tab for the `greenfield` command):
+**Claude Code plugin** (skill and the nine research roles, no hooks). The plugin does not install the `greenfield` command, so also run the pipx line below:
 ```text
 /plugin install greenfield-business-evaluator --marketplace aarongbaker/greenfield-business-evaluator
 ```
@@ -37,7 +37,7 @@ git clone https://github.com/aarongbaker/greenfield-business-evaluator.git  # ne
 cd greenfield-business-evaluator  # needs-clone
 python3 install.py --platform both --scope project --project ../your-repo  # needs-clone
 ```
-User-scope installs, upgrades, `--dry-run`, uninstall and the install locations are in [docs/install.md](docs/install.md).
+Check that `python3 --version` reports 3.11 or later; on Windows, use WSL. From a clone without pipx, run `python3 .claude/skills/greenfield-business-evaluator/scripts/greenfield.py` (or `.agents/skills/...` for Codex-only installs) wherever the docs say `greenfield`. User-scope installs, upgrades, `--dry-run`, uninstall and the install locations are in [docs/install.md](docs/install.md).
 
 ## Quickstart
 
@@ -62,7 +62,7 @@ greenfield dashboard --open
 $greenfield-business-evaluator Evaluate [your idea]. Research the market live, challenge competitors and economics, and recommend whether to validate, pivot, or run a bounded pilot. No implementation.
 ```
 
-You can pass a one-line idea or point the skill at a PRD or README. Choose a depth of `quick`, `standard` (default), or `deep`. If the skill does not appear, restart the assistant. The skill proposes outreach and paid experiments but never spends money, contacts people, or launches anything on its own. Without web access it marks research as incomplete rather than inventing answers.
+You can pass a one-line idea or point the skill at a PRD or README. Choose a depth of `quick`, `standard` (default), or `deep`. If the skill does not appear, restart the assistant. The skill proposes outreach and paid experiments but never spends money, contacts people, or launches anything on its own. Without web access it marks research as incomplete rather than inventing answers. To get from the first verdict to Proceed with your own materials, experiments and receipts, follow [the founder journey](docs/founder-journey.md).
 
 ### Output
 
@@ -142,7 +142,7 @@ The second command should print Research incomplete. CI (the badge above) also c
 
 ## Learn more
 
-- [docs/](docs/): [install](docs/install.md), [commands](docs/cli.md), [how scoring works](docs/how-scoring-works.md), [Mission Control](docs/mission-control.md), [evidence and the ledger](docs/evidence.md), [comparing ideas](docs/portfolio.md), [troubleshooting](docs/troubleshooting.md)
+- [docs/](docs/): [founder journey](docs/founder-journey.md), [install](docs/install.md), [commands](docs/cli.md), [how scoring works](docs/how-scoring-works.md), [Mission Control](docs/mission-control.md), [evidence and the ledger](docs/evidence.md), [comparing ideas](docs/portfolio.md), [troubleshooting](docs/troubleshooting.md)
 - [CHANGELOG.md](CHANGELOG.md) and [SECURITY.md](SECURITY.md)
 
 ## License

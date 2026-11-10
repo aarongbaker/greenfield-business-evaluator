@@ -26,7 +26,17 @@ These weights and thresholds are **design choices** for triage, not a validated 
 - 4 = strong and defensible conditional thesis.
 - 5 = unusually compelling on tested criteria; not a guarantee.
 
-Quality can be speculative; label assumptions. An unknown dimension is `quality: null`, not an arbitrary 3. Scoring only runs when quality has an integer 0–5 for all pillars. If incomplete, set `quality: null` and return `RESEARCH_INCOMPLETE` plus gaps without a misleading weighted total.
+Quality is a finding, held to the evidence by a rubric (new in this release). A pillar's quality should not exceed its **rubric level**, which its receipts set:
+
+| Receipt kind | Highest evidence | Rubric level: `pass` / `mixed` / `fail` |
+| --- | --- | --- |
+| `customer_action` | 3 | 4 / 3 / 2 |
+| `paid_test`, `signed_commitment` | 4 | 5 / 4 / 2 |
+| `feasibility_proof` (execution only) | 4 | 5 / 4 / 2 |
+| `repeat_purchase` | 5 | 5 / 5 / 2 |
+| no receipt (interviews, surveys, reviewed sources) | 2 | 3 |
+
+The rubric level comes from the newest receipt at the highest evidence level on the pillar, read from the signed ledger whether linked or not, so a newer `fail` caps it at 2. The scorer warns "quality above evidence" for every pillar over its rubric level, and Proceed requires every pillar at or below it, re-assessed (`greenfield evidence assessed PILLAR`) after its newest receipt. Label assumptions. An unknown dimension is `quality: null`, not an arbitrary 3. Scoring only runs when quality has an integer 0–5 for all pillars. If incomplete, set `quality: null` and return `RESEARCH_INCOMPLETE` plus gaps without a misleading weighted total.
 
 ## Evidence (0–5) — inspired by Strategyzer (Sept 2026), operationalized for this skill
 

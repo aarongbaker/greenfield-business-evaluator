@@ -25,6 +25,9 @@ Versioning rules:
 - `ledger reattest` touches only this evaluation's events and adopts pre-wave events only in a run that `evidence init` marked legacy, asking for `--as` and `--result`.
 - `greenfield report` recomputes the score and refuses a `decision.json` that disagrees.
 - Plain `greenfield demo` no longer makes itself the active run when any real run exists.
+- `doctor` reports a missing signing key as info, not a warning, and prints the script-path fallback when `greenfield` is not on PATH.
+- `start` stores `execution.depth`, gives Claude Code the same next step as Codex, and asks for a profile on a terminal when `--model` is not given.
+- The skill proposes `evidence add` commands for the founder instead of attesting, links with `evidence link`, keeps `evaluation_id`, and stamps re-assessment with `evidence assessed`. `scoring.md` replaces "quality can be speculative" with the rubric.
 
 ### Added
 
@@ -32,6 +35,7 @@ Versioning rules:
 - `greenfield ledger reidea` carries receipts across a typo-sized edit of the idea.
 - `greenfield plan` finds the cheapest receipts that reach 75, 90 or 100 with Proceed (`--add-experiments` writes them in); score names the next experiment and stops with "stop or reframe" when findings, not missing evidence, hold the score.
 - Every score of a run prints a cumulative change log from `quality-history.jsonl`, and warns when a quality is above what its evidence supports.
+- [docs/founder-journey.md](docs/founder-journey.md): the clone-to-Proceed guide, with what each material earns, routes for each profile and the ladder to 100. `docs/evidence.md` and `docs/how-scoring-works.md` cover `evidence add`, the rubric and gate bindings.
 - `greenfield demo --proceed` scores a bundled worked example that reaches Proceed (DEMO data, valid only in its own folder).
 - Mission Control and DECISION.md show each receipt, each gate and the planner's route.
 - `profiles show` prints a `pilot_gates` block to paste; `start --model` pre-fills it.

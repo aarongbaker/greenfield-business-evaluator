@@ -196,6 +196,14 @@ class ReadmeShapeTests(unittest.TestCase):
                 self.assertIn(row, text)
 
 
+class QuotingTests(unittest.TestCase):
+    def test_no_dollar_inside_double_quotes(self):  # W53: "4 of 30 paid $49" would lose $49 to the shell
+        for path in DOCS:
+            for line, _ in shell_commands(path):
+                with self.subTest(file=path.name, command=line):
+                    self.assertIsNone(re.search(r'"[^"]*(?<!\\)\$[^"]*"', line), "single-quote text that contains $")
+
+
 class LinkTests(unittest.TestCase):
     def test_relative_links_and_anchors_resolve(self):
         for path in LINKED:

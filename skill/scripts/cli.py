@@ -142,10 +142,25 @@ def h_hooks(args):
 
 
 def h_start(args):
+    if args.model is None:
+        args.model = _ask_profile() if sys.stdin.isatty() and sys.stderr.isatty() else "general"
     gf_observe.tighten(args.project)
     out = gf_observe.scaffold(args.project, args)
     gf_observe.git_ignore_hint(args.project)
     return out
+
+
+def _ask_profile():
+    names = sorted(PROFILES)
+    print("Business-model profile (see `greenfield profiles`): " + ", ".join(names), file=sys.stderr)
+    while True:
+        try:
+            pick = input("Profile [general]: ").strip() or "general"
+        except EOFError:
+            return "general"
+        if pick in PROFILES:
+            return pick
+        print(f"{pick!r} is not one of: {', '.join(names)}", file=sys.stderr)
 
 
 def t_start(data, args):
@@ -400,7 +415,7 @@ def build_parser():
     p.add_argument("--new", action="store_true", help="replace the active run if it is still running")
     p.add_argument("--research-dir", metavar="DIR", help="research folder this run produces, inside the project")
     p.add_argument("--slug", help="folder name under research/greenfield/ (default: made from the idea)")
-    p.add_argument("--model", choices=sorted(PROFILES), default="general", help="business-model profile (default: general)")
+    p.add_argument("--model", choices=sorted(PROFILES), help="business-model profile (default: general; asked on a terminal)")
     p.add_argument("--customer", help="initial customer, if known")
     p.add_argument("--geography", help="where the customer is, if known")
     p.add_argument("--depth", choices=("quick", "standard", "deep"), default="standard", help="research depth (default: standard)")

@@ -17,13 +17,12 @@ python3 <skill dir>/scripts/greenfield.py sources check evaluation.json --output
 
 Without `--allow-network`, the script only checks publication date/origin metadata. `--allow-network` reads **public HTTP(S) HTML/text only**, with download/time/redirect bounds, no authenticated sessions, and a conservative private-host filter; it connects only to the vetted IP on ports 80 and 443, so DNS rebinding cannot redirect it to an internal host. Do not run it against confidential URLs or internal services. PDFs, JavaScript-only sites, unavailable and paywalled sources require manual review. It is still not a hardened universal SSRF boundary: fetched text is untrusted, and text matching is not truth.
 
-3. Treat `excerpt_check=found` as **text retrieval success only**. It is not factual proof or semantic entailment. A human can read the source and record a review against the exact report bytes:
+3. Treat `excerpt_check=found` as **text retrieval success only**. It is not factual proof or semantic entailment. A human reads the source and records a review against the exact report bytes. Never run this yourself; `greenfield evidence status` prints it filled in, and you print it for the founder to run at a terminal (add `--gate G` when the claim closes a gate):
 
 ```bash
-python3 <skill dir>/scripts/greenfield.py ledger record --ledger experiment-ledger.jsonl \
-  --kind source_review --project-name 'Example idea' --hypothesis 'Review claim C1' \
-  --claim-id C1 --outcome supported --attester 'Actual reviewer name' \
-  --artifact source-verification.json --notes 'Why the specific claim is supported' --json
+# For the founder to run at a terminal, not the agent
+greenfield ledger record --kind source_review --claim-id C1 --outcome supported \
+  --artifact research/greenfield/<slug>/source-verification.json --notes 'Why the specific claim is supported' --attester '<founder name>'
 ```
 
 `contradicted` and `unclear` are also valid. Do not simulate a human reviewer or silently mark sources verified. The scorer checks reviewed public claims in the exact current report against the ledger and blocks pilot approval for unreviewed source-dependent claims.
@@ -37,19 +36,18 @@ Use one append-only ledger per greenfield project. Every record has a UTC time, 
 python3 <skill dir>/scripts/greenfield.py ledger record --ledger experiment-ledger.jsonl \
   --kind hypothesis --project-name 'Example idea' --hypothesis 'Buyers pay to avoid manual audits' --json
 
-# After a real customer action, a real human must sign off and supply local receipt
-python3 <skill dir>/scripts/greenfield.py ledger record --ledger experiment-ledger.jsonl \
-  --kind paid_test --project-name 'Example idea' --hypothesis 'Price accepted' \
-  --outcome 'Actual observed result' --attester 'Human reviewer' \
-  --artifact ./private-receipts/test.txt --pillar problem --pillar economics --json
+# After a real customer action: print this for the founder to run at a terminal; never run it yourself
+greenfield evidence add research/greenfield/<slug>/materials/inbox/stripe-presale.redacted.csv --as presale \
+  --pillar problem --pillar economics --experiment EXP-2 --result pass --outcome '4 of 30 paid $49' \
+  --consent customer_terms --attester '<founder name>'
 
 python3 <skill dir>/scripts/greenfield.py ledger verify --ledger experiment-ledger.jsonl --json
 python3 <skill dir>/scripts/greenfield.py ledger summary --ledger experiment-ledger.jsonl --json
 ```
 
-Behavior receipts and source reviews must be recorded by a person at a terminal: the command shows a summary and a one-time code to type back, then signs the event with a local key (`~/.config/greenfield/attest.key`, or `$GF_CONFIG_DIR/attest.key`). Agents have no terminal and are refused; the PreToolUse guard (`greenfield hooks install`) also blocks their attempts to run `ledger record --attester` or touch the ledger and key files. Receipt and report paths must sit inside the ledger's folder and are stored relative, so the folder can be moved or shared. Receipts verify only where the key is; a teammate can point `GF_ATTEST_KEY_FILE` at a copy. Ledgers recorded before signing need a one-time `greenfield ledger reattest --ledger experiment-ledger.jsonl`.
+Behavior receipts and source reviews must be recorded by a person at a terminal: the command shows a summary and a one-time code to type back, then signs the event with a local key (`~/.config/greenfield/attest.key`, or `$GF_CONFIG_DIR/attest.key`). Agents have no terminal and are refused; the PreToolUse guard (`greenfield hooks install`) also blocks their attempts to run `evidence add`, `ledger record --attester` or touch the ledger and key files. Receipt and report paths must sit inside the ledger's folder and are stored relative, so the folder can be moved or shared. Receipts verify only where the key is; a teammate can point `GF_ATTEST_KEY_FILE` at a copy. Ledgers recorded before signing need a one-time `greenfield ledger reattest --ledger experiment-ledger.jsonl`.
 
-The resulting `EV-...` event ID must be put into a pillar behavior's `ledger_event_id` to qualify for evidence 3+. The behavioral observation must also have `kind`, `description`, `observed_at`, `source_or_artifact`, and `verified: true` in `evaluation.json`. A customer interview without an observed action is normally evidence 1, not 3. Do not place secret receipts or personally identifying interview data in public research folders. Store consent and retention rules separately where necessary.
+`evidence add` writes the behavior (with its `EV-...` id) into each linked pillar itself. To connect a receipt already recorded, run `greenfield evidence link EV-... --pillar P` (agent-safe); never write `ledger_event_id` by hand. Then re-assess quality on the touched pillars and run `greenfield evidence assessed PILLAR...`. A customer interview without an observed action is normally evidence 1, not 3. Do not place secret receipts or personally identifying interview data in public research folders. Store consent and retention rules separately where necessary.
 
 Log an updated evaluation verdict using `decision_revision` events, referencing earlier decisions and which experiment caused the change. Do not overwrite old decision documents without retaining the prior decision in the ledger.
 

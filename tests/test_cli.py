@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "skill" / "scripts"
@@ -278,6 +279,22 @@ class ScaffoldTests(unittest.TestCase):
         self.run_gf("ledger", "record", "--kind", "hypothesis", "--project-name", "X", "--hypothesis", "H")
         self.assertTrue((folder / "experiment-ledger.jsonl").exists())
         self.run_gf("ledger", "verify")
+
+    def test_start_stores_depth_and_gives_both_platforms_the_same_hint(self):  # W54
+        out = self.run_gf("start", "--idea", "x idea", "--depth", "deep", "--no-plan")
+        self.assertEqual(json.loads((self.p / out["evaluation"]).read_text())["execution"]["depth"], "deep")
+        claude, codex = (n.split("greenfield-business-evaluator ", 1)[1] for n in out["next"][:2])
+        self.assertEqual(claude, codex)
+        self.assertIn("research folder: research/greenfield/x-idea", claude)
+
+    def test_start_asks_for_a_profile_on_a_terminal(self):  # W54
+        args = cli.build_parser().parse_args(["--project", str(self.p), "start", "--idea", "y idea", "--no-plan"])
+        with contextlib.redirect_stderr(io.StringIO()), mock.patch("sys.stdin.isatty", return_value=True), \
+                mock.patch("sys.stderr.isatty", return_value=True), mock.patch("builtins.input", side_effect=["nope", "services"]):
+            out = cli.h_start(args)
+        self.assertEqual(json.loads((self.p / out["evaluation"]).read_text())["project"]["business_model"], "services")
+        out = self.run_gf("start", "--idea", "z idea", "--new", "--no-plan")  # piped: no question, general
+        self.assertEqual(json.loads((self.p / out["evaluation"]).read_text())["project"]["business_model"], "general")
 
     def test_default_today_and_no_plan(self):
         import datetime as dt

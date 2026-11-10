@@ -250,7 +250,7 @@ def scaffold(project, args):
     for key, value in (("initial_customer", args.customer), ("geography", args.geography)):
         if value:
             data["project"][key] = value
-    data["execution"]["mode"] = "not_started"
+    data["execution"].update(mode="not_started", depth=args.depth)
     data["evidence_ledger"], data["verification_report"] = "experiment-ledger.jsonl", "source-verification.json"
     import gf_materials, gf_profiles
     if slug in gf_materials.RESERVED:
@@ -265,9 +265,9 @@ def scaffold(project, args):
         import gf_runs
         gf_runs.plan(project, rid)
     rel = folder.relative_to(project).as_posix()
-    prompt = f"Evaluate this idea with the greenfield-business-evaluator skill: {args.idea} (depth: {args.depth}; research folder: {rel})"
+    ask = f"Evaluate this idea: {args.idea} (depth: {args.depth}; research folder: {rel})"
     return {"run_id": rid, "slug": slug, "research_dir": rel, "evaluation": f"{rel}/evaluation.json",
-            "next": [f"Claude Code: /greenfield-business-evaluator {args.idea}", f"Codex: {prompt}", "greenfield dashboard"]}
+            "next": [f"Claude Code: /greenfield-business-evaluator {ask}", f"Codex: $greenfield-business-evaluator {ask}", "greenfield dashboard"]}
 
 
 def emit(project, run_id, event, *, provider="manual", agent="orchestrator", agent_id="", session_id="", summary="", tool="", url="", tokens=0, at=None):
