@@ -21,5 +21,5 @@ To reach Proceed: quality 5: problem; quality 4: market, value, economics;
   quality 3: distribution, competition, execution, timing; evidence 3: problem,
   market, value, economics, distribution; start the evaluation; run live web
   research
-Next: Fill pillar quality scores and run live web research, then re-score.
+Next: Ask your assistant to finish the research, then run `greenfield score`.
 Heuristic triage, not a probability of commercial success.

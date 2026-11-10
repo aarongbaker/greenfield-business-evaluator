@@ -19,12 +19,12 @@ As of 2026-10-23 · Profile: general · Research: live web, single-agent fallbac
 | Execution | 5 | ████░ 4 | ██░░░ 2 | SAMPLE: a small team can build an MVP. | C7 |
 | Timing | 5 | ███░░ 3 | ██░░░ 2 | SAMPLE: fuel costs keep route efficiency in focus. | C8 |
 
-**What would change this verdict:** quality 5: problem; evidence 3: problem, market, value, economics, distribution; verify sources and record a human review; problem quality 4 has no receipt; market quality 4 has no receipt; value quality 4 has no receipt; competition quality 4 has no receipt; execution quality 4 has no receipt
+**What would change this verdict:** quality 5: problem; evidence 3: problem, market, value, economics, distribution; a human review of the sources; problem quality 4 has no receipt; market quality 4 has no receipt; value quality 4 has no receipt; competition quality 4 has no receipt; execution quality 4 has no receipt
 
 **Cheapest route to 76:** 3 receipts · signups, signups, analytics · 14 days, $0 (run `greenfield plan`)
 1. Waitlist from a cold list for problem, market
 2. Waitlist from a cold list for value
-3. Product usage analytics for economics, distribution, competition
+3. Priced landing page for economics, distribution, competition
 
 How much to trust this verdict: see "How much to trust Proceed" in the greenfield README and SECURITY.md.
 <!-- greenfield:generated end -->

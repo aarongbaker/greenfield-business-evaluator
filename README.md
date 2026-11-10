@@ -85,7 +85,7 @@ Research incomplete: 8 of 8 pillars unassessed, no live web research
 Pillar         Wt  Quality         Evidence    Profile general
 problem        20  — not assessed  ░░░░░ 0
 ...
-Next: Fill pillar quality scores and run live web research, then re-score.
+Next: Ask your assistant to finish the research, then run `greenfield score`.
 ```
 
 ## How it works

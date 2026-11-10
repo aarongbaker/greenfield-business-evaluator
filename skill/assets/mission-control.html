@@ -31,12 +31,13 @@ a{color:inherit;text-decoration:underline;text-decoration-color:var(--line-2);te
 .conn.live .dot{color:var(--run)}.conn.stale{color:var(--warn)}.conn.bad{color:var(--bad)}
 body.stale main{opacity:.7}
 /* layout */
-main{display:grid;grid-template-columns:minmax(372px,400px) minmax(0,1fr) minmax(0,1fr);grid-template-areas:"verdict lanes lanes" "matrix matrix log"}
+/* verdict runs down the left at a readable width; the right side stacks lanes, pillars and log, and the log grows only to meet the verdict's height */
+main{display:grid;max-width:2400px;margin:0 auto;grid-template-columns:clamp(380px,30vw,600px) minmax(0,1fr);grid-template-rows:auto auto 1fr;grid-template-areas:"verdict lanes" "verdict matrix" "verdict log"}
 section{padding:16px;min-width:0}
-.verdict{grid-area:verdict;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.verdict{grid-area:verdict;border-right:1px solid var(--line);container:verdict/inline-size}
 .lanes{grid-area:lanes;border-bottom:1px solid var(--line)}
-.matrix{grid-area:matrix;border-right:1px solid var(--line)}
-.logp{grid-area:log}
+.matrix{grid-area:matrix;border-bottom:1px solid var(--line)}
+.logp{grid-area:log;display:flex;flex-direction:column}
 .h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 10px}
 .h h2{font-size:13px;font-weight:600;margin:0}
 .h .meta{color:var(--fg-2);font-size:12px;text-align:right}
@@ -49,7 +50,7 @@ section{padding:16px;min-width:0}
 .vhead{color:var(--fg-2);margin:0 0 10px}
 .vstats{font:12px var(--mono);color:var(--fg-2);margin:0 0 6px}
 .vstats b{color:var(--fg);font-weight:600}
-.map svg{display:block;width:100%;max-width:380px;height:auto;overflow:visible}
+.map svg{display:block;width:100%;height:auto;overflow:visible}
 .map text{font:12px var(--mono);fill:var(--fg-3)}
 .map .zone{fill:color-mix(in srgb,var(--ok) 9%,transparent)}
 .map text.zl{fill:var(--ok)}
@@ -70,14 +71,15 @@ section{padding:16px;min-width:0}
 .map.bet-on .ghost{opacity:1}
 .missing{margin:8px 0 0;color:var(--fg-2)}
 .missing b{color:var(--fg);font-weight:600}
-.gates,#plan{overflow-wrap:anywhere}.gates{list-style:none;margin:6px 0 0;padding:0;font-family:var(--mono);font-size:12px;color:var(--fg-2)}.gates .ok{color:var(--ok)}.gates .bad{color:var(--bad)}
+.gates,.steps{overflow-wrap:anywhere}.gates{list-style:none;margin:6px 0 0;padding:0;font-family:var(--mono);font-size:12px;color:var(--fg-2)}.gates .ok{color:var(--ok)}.gates .bad{color:var(--bad)}
 .rc.t-warn{color:var(--warn)}.rc{overflow-wrap:anywhere;white-space:normal;font-size:12px;color:var(--fg-2);font-family:var(--mono)}.rc .bad{color:var(--bad)}
 .attn{margin-top:6px;color:var(--fg-2);font-size:12px}
 .attn summary{cursor:pointer}
 .attn ul{margin:4px 0 0;padding-left:18px}
-.betbox{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.betbox{margin-top:14px}
 .betbox .lbl{margin-top:0}
-.betwhy,.betstep{color:var(--fg-2);font-size:12px;margin-top:2px}
+.steps{margin:0 0 10px;padding-left:20px;display:grid;gap:6px}.steps li::marker{color:var(--fg-3);font:12px var(--mono)}
+.steps code{font:12px var(--mono);color:var(--fg)}.steps b{font-weight:600}
 .cmd{display:flex;align-items:flex-start;gap:8px;margin-top:8px;padding:6px 8px;border:1px solid var(--line-2);border-radius:2px;font:12px/1.5 var(--mono)}
 .cmd code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
 .cmd.open code{white-space:pre-wrap;word-break:break-word}
@@ -87,8 +89,8 @@ section{padding:16px;min-width:0}
 .empty-title{font-size:18px;font-weight:650;margin:4px 0}
 .errors{font-size:12px;color:var(--bad);padding-left:18px}
 /* lanes */
-.axis,.lane{display:grid;grid-template-columns:176px minmax(0,1fr) 140px 128px;align-items:center;column-gap:12px}
-.lane{height:30px;width:100%;border:0;border-top:1px solid var(--line);background:none;padding:0;text-align:left;cursor:pointer;border-radius:2px;color:inherit}
+.axis,.lane{display:grid;grid-template-columns:13.5em minmax(0,1fr) 11em 10em;align-items:center;column-gap:12px}
+.lane{height:34px;width:100%;border:0;border-top:1px solid var(--line);background:none;padding:0;text-align:left;cursor:pointer;border-radius:2px;color:inherit}
 .lane:hover,.lane.sel{background:color-mix(in srgb,var(--fg) 4%,transparent)}
 .lane.flash{animation:flash .5s ease-out}
 @keyframes flash{from{background:color-mix(in srgb,var(--run) 18%,transparent)}}
@@ -96,25 +98,28 @@ section{padding:16px;min-width:0}
 .who .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .g{display:inline-block;width:12px;text-align:center;font-family:var(--mono)}
 .g.queued,.g.none{color:var(--fg-3)}.g.wait{color:var(--warn)}.g.run{color:var(--run)}.g.done{color:var(--ok)}.g.fail{color:var(--bad)}
-.track{position:relative;height:30px;display:block}
-.track .rail{position:absolute;left:0;right:0;top:14px;height:2px;background:var(--track)}
-.span{position:absolute;top:9px;height:12px;min-width:2px;border-radius:1px}
-.span.run{background:var(--bar-run)}.span.done{background:var(--bar-done)}.span.fail{background:color-mix(in srgb,var(--bad) 25%,transparent)}
-.tick{position:absolute;top:9px;width:1px;height:12px;background:var(--fg-3)}
+.track{position:relative;height:34px;display:block}
+.track .rail{position:absolute;left:0;right:0;top:16px;height:1px;background:var(--line)}
+.track .gl{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
+.span{position:absolute;top:12px;height:9px;min-width:4px;border-radius:5px}
+.span.run{background:linear-gradient(90deg,var(--bar-run),color-mix(in srgb,var(--run) 45%,var(--bar-run)));box-shadow:inset -2px 0 var(--run)}
+.span.done{background:var(--bar-done)}.span.fail{background:color-mix(in srgb,var(--bad) 30%,transparent);box-shadow:inset -2px 0 var(--bad)}
+.tick{position:absolute;top:14px;width:1px;height:5px;background:var(--fg-3);opacity:.7}
 .tick.search{background:var(--run)}.tick.fetch{background:var(--fg-2)}
-.src{position:absolute;top:3px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--ok)}
-.err{position:absolute;top:5px;margin-left:-4px;font:600 12px/1 var(--mono);color:var(--bad)}
-.waitnote{position:absolute;top:6px;left:0;color:var(--fg-2);font-size:12px;white-space:nowrap}
+.src{position:absolute;top:5px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 2px var(--bg)}
+.err{position:absolute;top:2px;margin-left:-4px;font:600 12px/1 var(--mono);color:var(--bad)}
+.waitnote{position:absolute;top:9px;left:0;color:var(--fg-2);font-size:12px;white-space:nowrap}
 .what{font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg-2)}
 .what.warn{color:var(--warn)}
-.cnt{font:12px var(--mono);text-align:right;padding-right:4px;color:var(--fg-3);white-space:nowrap}
+.cnt{font:12px var(--mono);font-variant-numeric:tabular-nums;text-align:right;padding-right:4px;color:var(--fg-3);white-space:nowrap}
 .axis{height:22px}
 .axis .labels{position:relative;height:22px;font:12px var(--mono);color:var(--fg-3)}
-.axis .labels span{position:absolute;top:4px;transform:translateX(-50%)}
+.axis .labels span{position:absolute;top:6px;transform:translateX(-50%)}
+.axis .labels span::before{content:"";position:absolute;top:-6px;left:50%;width:1px;height:4px;background:var(--line-2)}.axis .labels span:first-child::before{left:0}
 .axis .labels span:first-child{transform:none}
 .lanebox{position:relative;margin-top:18px}
 .nowline{position:absolute;top:0;bottom:22px;width:1px;background:var(--run);pointer-events:none;opacity:.8}
-.nowline::after{content:"now";position:absolute;top:-17px;left:-11px;font:12px var(--mono);color:var(--run)}
+.nowline::after{content:"now";position:absolute;top:-19px;left:-15px;padding:0 4px;border-radius:3px;font:12px/16px var(--mono);color:var(--bg);background:var(--run)}
 .legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--fg-3);font-size:12px;margin-top:10px}
 .legend i{display:inline-block;vertical-align:middle;margin-right:5px}
 .legend .lt{width:1px;height:11px}.legend .ld{width:5px;height:5px;border-radius:50%;background:var(--ok)}
@@ -148,10 +153,10 @@ th.r .hint .tip{left:auto;right:-8px}
 .filters button{background:none;border:1px solid transparent;border-radius:2px;padding:1px 6px;color:var(--fg-2);cursor:pointer;font-size:12px}
 .filters button[aria-pressed="true"]{color:var(--fg);border-color:var(--line-2)}
 .filters .n{color:var(--warn);margin-left:4px}
-.logwrap{position:relative}
-.feed{height:300px;overflow-y:auto;overflow-anchor:none;font:12px/1 var(--mono);border-top:1px solid var(--line)}
-.row{display:grid;grid-template-columns:70px 96px 64px minmax(0,1fr);gap:10px;align-items:center;min-height:24px;padding:0 4px;white-space:nowrap}
-.row>span{overflow:hidden;text-overflow:ellipsis}
+.logwrap{position:relative;flex:1 0 200px}
+.feed{position:absolute;inset:0;overflow-y:auto;overflow-anchor:none;font:12px/1 var(--mono);border-top:1px solid var(--line)}
+.row{display:grid;grid-template-columns:8ch 12ch 7ch minmax(0,1fr);gap:10px;align-items:center;min-height:24px;padding:0 4px;white-space:nowrap}
+.row>span:last-child{white-space:normal;overflow-wrap:anywhere;padding:4px 0}
 .row .t{color:var(--fg-3)}.row .a{color:var(--fg-2)}
 .k-search{color:var(--run)}.k-source,.k-done{color:var(--ok)}.k-failed,.k-warning{color:var(--bad)}.k-start,.k-run{color:var(--fg)}
 .row .x{color:var(--fg-3);margin-left:6px}
@@ -167,7 +172,7 @@ th.r .hint .tip{left:auto;right:-8px}
 .drawer .close{position:absolute;top:12px;right:12px}
 .kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:4px 12px;font-size:12px;margin:0 0 14px}
 .kv dt{color:var(--fg-2)}.kv dd{margin:0;font-family:var(--mono);overflow-wrap:anywhere}
-.drawer .row{grid-template-columns:70px 64px minmax(0,1fr)}
+.drawer .row{grid-template-columns:8ch 7ch minmax(0,1fr)}
 .claims{margin:0;padding-left:18px;font-size:12px}.claims li{margin:6px 0;overflow-wrap:anywhere}
 .help{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 70%,transparent);display:none;place-items:center;z-index:8}
 .help.open{display:grid}
@@ -178,13 +183,22 @@ th.r .hint .tip{left:auto;right:-8px}
 .help p{color:var(--fg-2);font-size:12px;margin:12px 0 0}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 @media (forced-colors:active){.span,.meter i,.ladder i,.tick{border:1px solid CanvasText}}
-@media (max-width:1100px){main{grid-template-columns:1fr;grid-template-areas:"verdict" "lanes" "matrix" "log"}.verdict,.matrix{border-right:0}.matrix{border-bottom:1px solid var(--line)}}
+@media (max-width:1100px){main{grid-template-columns:1fr;grid-template-rows:none;grid-template-areas:"verdict" "lanes" "matrix" "log"}.verdict{border-right:0;border-bottom:1px solid var(--line)}.matrix{border-right:0;border-bottom:1px solid var(--line)}
+}
+/* a verdict panel wide enough for two columns: map with the verdict's words beside it, steps below in two columns that read down */
+@container verdict (min-width:700px){
+  #decBody{display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);column-gap:32px;align-content:start;grid-template-rows:auto auto auto 1fr;
+    grid-template-areas:"map word" "map head" "map stats" "map note" "bet bet" "prov prov"}
+  .vgrid{display:contents}#mapbox{grid-area:map;align-self:start}#vword{grid-area:word}#vhead{grid-area:head}#vstats{grid-area:stats}
+  .vnote{grid-area:note}.betbox{grid-area:bet}.prov{grid-area:prov}
+  .steps{display:block;columns:2 300px;column-gap:32px}.steps li{break-inside:avoid;margin-bottom:6px}}
 @media (max-width:640px){
+  #pillars td:first-child{white-space:normal}
   .bar{gap:10px;padding:0 12px}.mark .word,.clock,.kind,.conn .ctext{display:none}
   section{padding:14px 12px}
   .axis,.nowline,.legend,.lane .track,.lane .cnt,.hide-sm{display:none}
-  .lane{grid-template-columns:150px minmax(0,1fr)}.lanebox{margin-top:0}
-  .row{grid-template-columns:58px 74px 50px minmax(0,1fr);gap:8px}.drawer .row{grid-template-columns:58px 50px minmax(0,1fr)}
+  .lane{grid-template-columns:max-content minmax(0,1fr)}.lanebox{margin-top:0}
+  .row{gap:8px}
 }
 @media print{.bar button,.lanes,.logp,.drawer,.help,.betbox .cmd{display:none!important}main{grid-template-columns:1fr 1fr;grid-template-areas:"verdict matrix"}}
 </style></head><body>
@@ -206,13 +220,13 @@ th.r .hint .tip{left:auto;right:-8px}
 <div id="vword" class="vword"></div>
 <p id="vhead" class="vhead"></p>
 <div id="vstats" class="vstats"></div>
-<div class="map" id="mapbox"><svg id="map" viewBox="0 0 340 236" role="img" aria-label="Quality against proof for each pillar"></svg></div>
-<p id="missing" class="missing"></p>
-<ul id="gates" class="gates"></ul><p id="plan" class="missing"></p>
-<details id="attn" class="attn" hidden><summary id="attnSum"></summary><ul id="attnList"></ul></details>
-<div class="betbox" id="betbox"><div class="lbl" id="betLbl">Next bet</div><div id="nextBet"></div><div id="betWhy" class="betwhy"></div><div id="betStep" class="betstep"></div>
+<div class="vgrid"><div class="map" id="mapbox"><svg id="map" viewBox="0 0 340 236" role="img" aria-label="Quality against proof for each pillar"></svg></div>
+<div class="vnote"><p id="missing" class="missing"></p>
+<ul id="gates" class="gates"></ul>
+<details id="attn" class="attn" hidden><summary id="attnSum"></summary><ul id="attnList"></ul></details></div>
+<div class="betbox" id="betbox"><div class="lbl" id="betLbl">Next steps</div><ol id="steps" class="steps"></ol>
 <div class="cmd"><span class="p">$</span><code id="nextCmd" tabindex="0" title="Show the whole command"></code><button type="button" class="iconbtn" data-copy>copy</button></div></div>
-<p id="prov" class="prov"></p>
+<p id="prov" class="prov"></p></div>
 </div>
 </section>
 <section class="lanes" aria-labelledby="lh">
@@ -225,12 +239,12 @@ th.r .hint .tip{left:auto;right:-8px}
 <section class="matrix" aria-labelledby="mh">
 <div class="h"><h2 id="mh">Pillars</h2><span class="meta num" id="mMeta"></span></div>
 <table><thead><tr>
-<th><button class="hint" type="button">Pillar<span class="tip" role="tooltip"><b>Core pillars</b> (Problem, Market, Value, Economics, Distribution) decide the verdict: Proceed needs all five at quality 3+ and proof E3+. The other three are listed dimmer.</span></button></th>
+<th><button class="hint" type="button">Pillar<span class="tip" role="tooltip"><b>Core pillars</b> (Problem, Market, Value, Economics, Distribution) decide the verdict: Proceed needs all five at quality 3+ with a recorded customer action or better. The other three are listed dimmer.</span></button></th>
 <th class="r hide-sm"><button class="hint" type="button">Weight<span class="tip" role="tooltip">Share of the 100-point quality score under this run's business-model profile.</span></button></th>
 <th><button class="hint" type="button">Quality<span class="tip" role="tooltip"><b>How good the pillar looks</b> from the research, 0 to 5. Weighted across pillars into the score out of 100. A dashed meter is not assessed yet.</span></button></th>
 <th><button class="hint" type="button">Proof<span class="tip" role="tooltip"><b>How sure we can be</b>, 0 to 5, kept separate from quality: a great-looking pillar can still be unproven.
-<table><tbody><tr><td>E0</td><td>Belief, a deck, a made-up model</td></tr><tr><td>E1</td><td>Interviews, surveys, desk research</td></tr><tr><td>E2</td><td>Reactions to an artifact, real statistics</td></tr><tr class="cutrow"><td>E3</td><td>A customer took a real action</td></tr><tr><td>E4</td><td>A commitment: letter of intent, pre-sale</td></tr><tr><td>E5</td><td>Real sales or renewals</td></tr></tbody></table>
-Web research stops at E2. E3 and up need a result recorded in the ledger and confirmed by a person.</span></button></th>
+<table><tbody><tr><td>belief</td><td>Nothing recorded: a hunch, a deck</td></tr><tr><td>talk</td><td>Interviews or surveys</td></tr><tr><td>desk</td><td>Sources a person has reviewed</td></tr><tr class="cutrow"><td>action</td><td>A customer signed up, booked or clicked</td></tr><tr><td>commit</td><td>Money or a signature: pre-sale, invoice, LOI</td></tr><tr><td>repeat</td><td>Repeat purchases or renewals</td></tr></tbody></table>
+Web research stops at desk. Action and above need a receipt recorded with <code>greenfield evidence add</code> and confirmed by a person.</span></button></th>
 <th class="r hide-sm"><button class="hint" type="button">Sources<span class="tip" role="tooltip">Sources the pillar's specialist recorded during this run. Open a pillar for its claims and their checks.</span></button></th>
 <th class="r"><span class="sr-only">Specialist status</span></th></tr></thead><tbody id="pillars"></tbody></table>
 </section>
@@ -263,7 +277,7 @@ const FILTERS={all:()=>true,tools:t=>t==='tool_started'||t==='tool_failed',sourc
 const TOOLK={WebSearch:'search',WebFetch:'fetch',Read:'read',Grep:'grep',Glob:'glob'};
 const DOING={search:'searching the web',fetch:'reading a page',read:'reading a file',grep:'searching files',glob:'listing files'};
 const ABBR={problem:'P',market:'M',value:'V',economics:'Ec',distribution:'D',competition:'C',execution:'Ex',timing:'T'};
-const PROOF=['belief only','desk research','reactions & stats','customer action','commitment','real sales'];
+const PROOF=['nothing recorded','interviews or surveys','reviewed sources','a recorded customer action','money or a signature','repeat purchases'],LVL=['belief','talk','desk','action','commit','repeat'];
 const GLYPH={Done:['✓','done'],Failed:['✕','fail'],Running:['●','run'],Claimed:['●','run'],Quiet:['◌','wait'],Stopped:['–','none'],Queued:['○','queued']};
 const EMPTY={no_research_dir:['No research folder linked','This run does not know which research folder it produces yet, so there is no verdict to show.'],no_evaluation:['No evaluation yet','The linked folder has no evaluation.json.'],invalid:["Can't score this evaluation",'evaluation.json has input errors, so no verdict is shown.'],invalid_path:['Research folder is outside this project','The linked path leaves the project folder, so it was not read.']};
 const store={run:null,rev:null,runsTag:null,runSig:'',lastId:null,state:null,dec:null,decEtag:undefined,decAt:0,verdict:null,trail:[],lastOk:0,errDelay:1500,failing:false,retryAt:0,timer:0,busy:false,
@@ -344,10 +358,13 @@ function patchHeader(s){
   const st=s.stats,known=st.estimated_cost_usd!=null;show($('cost'),st.reported_tokens>0);
   if(st.reported_tokens>0)setText($('cost'),plural(st.reported_tokens,'token')+(known?' · $'+Number(st.estimated_cost_usd).toFixed(2):''));
 }
-function runSpan(){const s=store.state,w=(s&&s.run_window)||{},t0=Date.parse(w.start)||Date.now(),end=w.end?Date.parse(w.end):null,now=end||Date.now();return {t0,end,now}}
+/* idle: an open run with no event for IDLE ms; its axis then stops at the last event instead of stretching to now */
+const IDLE=300000;
+function lastAt(s){let t=0;for(const a of s.agents||[])for(const k of ['started_at','last_at','ended_at'])t=Math.max(t,Date.parse(a[k])||0);for(const k in store.marks)for(const m of store.marks[k])t=Math.max(t,m.t||0);return t}
+function runSpan(){const s=store.state,w=(s&&s.run_window)||{},t0=Date.parse(w.start)||Date.now(),end=w.end?Date.parse(w.end):null,now=end||Date.now(),last=s&&!end?lastAt(s):0,idle=last>0&&now-last>IDLE;return {t0,end,now,last,idle}}
 function paintClock(){if(!store.state){setText($('clock'),'');return}const {t0,now}=runSpan();setText($('clock'),'T+'+dur(now-t0))}
 function scale(){
-  const {t0,end,now}=runSpan(),len=end?Math.max(5000,end-t0):Math.max(60000,(now-t0)*1.08);
+  const {t0,end,now,last,idle}=runSpan(),len=end?Math.max(5000,end-t0):Math.max(60000,((idle?last:now)-t0)*1.08);
   const steps=[15,30,60,120,300,600,900,1800,3600,7200,21600,43200,86400].map(x=>x*1000),step=steps.find(x=>len/x<=6)||86400000;
   return {t0,len,step,pct:x=>((Math.min(Math.max(x,t0),t0+len)-t0)/len*100)};
 }
@@ -363,13 +380,14 @@ function patchAgents(s){
 }
 function paintLanes(){
   const s=store.state;if(!s)return;
-  const {t0,len,step,pct}=scale(),{end}=runSpan(),now=Date.now(),att=(s.checkpoints&&s.checkpoints.attempts)||{};
+  const {t0,len,step,pct}=scale(),{end,idle,last}=runSpan(),now=idle?last:Date.now(),att=(s.checkpoints&&s.checkpoints.attempts)||{};
+  let grid='';for(let x=step;x<len;x+=step)grid+=`<span class="gl" style="left:${(x/len*100).toFixed(2)}%"></span>`;
   const ready=s.agents.filter(a=>a.name!=='gf-redteam'&&a.display.label==='Done').length;let run=0,done=0,queued=0;
   for(const a of s.agents){
     const b=$('agents').querySelector(`[data-agent="${CSS.escape(a.name)}"]`);if(!b)continue;const q=c=>b.querySelector(c),d=a.display,[g,gc]=glyph(a);
     if(gc==='run'||gc==='wait')run++;else if(gc==='done')done++;else queued++;
     setText(q('.g'),g);setCls(q('.g'),'g '+gc);setAttr(q('.g'),'title',d.label);setText(q('.name'),roleName(a.name));
-    let h='<span class="rail"></span>';
+    let h=grid+'<span class="rail"></span>';
     if(!s.hooks_off&&a.started_at){
       const st=Date.parse(a.started_at),stop=a.status==='running'?(end||now):Date.parse(a.ended_at||a.last_at||a.started_at),l=pct(st);
       h+=`<span class="span ${a.status==='failed'?'fail':a.status==='running'?'run':'done'}" style="left:${l.toFixed(2)}%;width:${(pct(stop)-l).toFixed(2)}%"></span>`;
@@ -382,10 +400,10 @@ function paintLanes(){
     setText(q('.cnt'),[a.tools?plural(a.tools,'tool'):'',a.sources?a.sources+' src':''].filter(Boolean).join(' · '));
     setAttr(b,'aria-label',`${roleName(a.name)}: ${d.label}${what?', '+what:''}${a.errors?', '+plural(a.errors,'error'):''}`);
   }
-  setText($('laneMeta'),s.hooks_off?'no live signal':[done&&done+' done',run&&run+' running',queued&&queued+' queued'].filter(Boolean).join(' · '));
+  setText($('laneMeta'),s.hooks_off?'no live signal':[done&&done+' done',run&&run+' running',queued&&queued+' queued',idle&&'quiet for '+((q=>q<3600000?Math.round(q/60000)+' min':Math.round(q/3600000)+' h')(Date.now()-last))].filter(Boolean).join(' · '));
   let lab='';for(let x=0;x<=len;x+=step)lab+=`<span style="left:${(x/len*100).toFixed(2)}%">${esc(dur(x).replace(/^00:/,'0:'))}</span>`;
   setHTML($('axis'),lab);
-  const tr=$('agents').querySelector('.track'),nl=$('nowline'),live=!end&&!s.hooks_off&&tr&&tr.offsetWidth>0;show(nl,live);
+  const tr=$('agents').querySelector('.track'),nl=$('nowline'),live=!end&&!idle&&!s.hooks_off&&tr&&tr.offsetWidth>0;show(nl,live);
   if(live){const box=$('lanebox').getBoundingClientRect(),tb=tr.getBoundingClientRect();setAttr(nl,'style','left:'+(tb.left-box.left+tb.width*pct(Date.now())/100).toFixed(1)+'px')}
   paintClock();
 }
@@ -395,9 +413,9 @@ function patchPillars(){
   const s=store.state,ag=p=>s&&s.agents.find(a=>(roleOf(a.name)||{}).pillar===p.key),cov=(s&&s.checkpoints&&s.checkpoints.coverage)||{};
   setHTML(box,v.pillars.map(p=>{const a=ag(p),[g,gc]=a?glyph(a):['',''],e=p.evidence,q=p.quality,c=cov[p.key];
     const meter=Array.from({length:5},(_,i)=>`<i class="${q!=null&&i<q?'on':''}"></i>`).join(''),lad=[1,2].map(n=>`<i class="res ${n<=e?'on':''}"></i>`).join('')+'<span class="cut"></span>'+[3,4,5].map(n=>`<i class="beh ${n<=e?'on':''}"></i>`).join('');
-    return `<tr data-p="${esc(p.key)}" tabindex="0" class="${p.core?'':'side'}${store.hover===p.key?' hi':''}" aria-label="${esc(p.name)}: quality ${q==null?'not assessed':q+' of 5'}, proof E${e}">
-<td>${esc(p.name)}${p.over?`<div class="rc t-warn" title="${esc(p.over)}">Q${q} &gt; E${e}</div>`:''}${(p.receipts||[]).map(r=>`<div class="rc"><span class="${r.intact?'':'bad'}" title="${r.intact?'file intact':'file changed or missing'}">${r.intact?'✓':'✕'}</span> ${esc(r.id)} ${esc(r.material)} ${esc(r.result)}${r.threshold?' vs '+esc(r.threshold):''}${r.outcome?' · '+esc(r.outcome):''} · ${esc(r.date)}${r.reused_from.length?' · reused from '+esc(r.reused_from.join(', ')):''}</div>`).join('')}</td><td class="r num dim hide-sm">${p.weight}%</td><td title="${q==null?'Not assessed':'Quality '+q+' of 5'}"><span class="meter${q==null?' na':''}" aria-hidden="true">${meter}</span><span class="num dim">${q==null?'–':q}</span></td>
-<td title="E${e} · ${PROOF[e]}"><span class="ladder" aria-hidden="true">${lad}</span><span class="num dim">E${e}</span></td>
+    return `<tr data-p="${esc(p.key)}" tabindex="0" class="${p.core?'':'side'}${store.hover===p.key?' hi':''}" aria-label="${esc(p.name)}: quality ${q==null?'not assessed':q+' of 5'}, proof ${LVL[e]}">
+<td>${esc(p.name)}${p.over?`<div class="rc t-warn" title="${esc(p.over)}">Q${q} ahead of proof</div>`:''}${(p.receipts||[]).map(r=>`<div class="rc"><span class="${r.intact?'':'bad'}" title="${r.intact?'file intact':'file changed or missing'}">${r.intact?'✓':'✕'}</span> ${esc(r.id)} ${esc(r.material)} ${esc(r.result)}${r.threshold?' vs '+esc(r.threshold):''}${r.outcome?' · '+esc(r.outcome):''} · ${esc(r.date)}${r.reused_from.length?' · reused from '+esc(r.reused_from.join(', ')):''}</div>`).join('')}</td><td class="r num dim hide-sm">${p.weight}%</td><td title="${q==null?'Not assessed':'Quality '+q+' of 5'}"><span class="meter${q==null?' na':''}" aria-hidden="true">${meter}</span><span class="num dim">${q==null?'–':q}</span></td>
+<td title="${PROOF[e]}"><span class="ladder" aria-hidden="true">${lad}</span><span class="num dim">${LVL[e]}</span></td>
 <td class="r num dim hide-sm" title="${c?esc(plural(c.sourced_claims,'sourced claim')+' · '+plural(c.excerpt_located,'excerpt')+' located'):''}">${a&&a.sources||''}</td><td class="r"><span class="g ${gc}" title="${esc(a?a.display.label:'')}">${g}</span></td></tr>`}).join(''));
   const total=s?s.stats.source_events:0,doms=new Set(Object.values(store.marks).flat().filter(m=>m.k==='src').map(m=>m.label));
   setText($('mMeta'),total?plural(total,'source')+(doms.size?' · '+plural(doms.size,'domain'):''):'');
@@ -466,47 +484,38 @@ function renderDecision(v){
   setText($('vword'),vd.label);setCls($('vword'),'vword '+tone);setAttr($('vword'),'title',vd.meaning);
   setText($('vhead'),vd.headline);setAttr($('vhead'),'title',vd.reason||'');setCls($('vhead'),'vhead'+(/stop or reframe/.test(vd.headline)?' t-warn':''));
   setHTML($('gates'),(v.gates||[]).map(g=>`<li class="${g.closed?'ok':g.text.includes('cannot close')?'bad':''}">${g.closed?'☑':'☐'} ${esc(g.text)}</li>`).join('')+(v.carried?'<li>receipts carried across an idea change</li>':''));
-  setHTML($('plan'),v.plan?`${esc(v.plan.text)} · <code>${esc(v.plan.command)}</code>`:'');
-  setHTML($('vstats'),`quality <b>${sc.weighted_quality==null?'–':sc.weighted_quality}</b>/100 · proof <b>E${Number(sc.evidence_average).toFixed(1)}</b> · <b>${sc.fatal_blockers}</b> ${sc.fatal_blockers===1?'blocker':'blockers'}${sc.profile&&sc.profile!=='general'?' · '+esc(sc.profile):''}`);
+  setHTML($('vstats'),`quality <b>${sc.weighted_quality==null?'–':sc.weighted_quality}</b>/100 · proof <b>${LVL[Math.floor(sc.evidence_average)]}</b> (${Number(sc.evidence_average).toFixed(1)}/5) · <b>${sc.fatal_blockers}</b> ${sc.fatal_blockers===1?'blocker':'blockers'}${sc.profile&&sc.profile!=='general'?' · '+esc(sc.profile):''}`);
   if(sc.weighted_quality!=null&&store.trail[store.trail.length-1]!==sc.weighted_quality)store.trail.push(sc.weighted_quality);
   renderMap(v,tone);renderGap(v);
   const at=v.attention;show($('attn'),at.warning_count>0);
   if(at.warning_count){setText($('attnSum'),plural(at.warning_count,'scorer warning'));setHTML($('attnList'),at.warnings.map(w=>`<li>${esc(w)}</li>`).join(''))}
-  const bet=v.next_bet,bp=bet&&bet.pillar&&v.pillars.find(p=>p.key===bet.pillar);
-  setText($('betLbl'),bet?'Next bet'+(bet.id?' '+bet.id:''):'Next step');show($('nextBet'),!!bet);if(bet)setText($('nextBet'),bet.text.replace(/^SAMPLE:\s*/,''));
-  show($('betWhy'),!!(bp&&bp.evidence<3));if(bp)setText($('betWhy'),`Tests ${bp.name}. A pass is recorded customer behavior, which can lift it to proof E3.`);
-  setText($('betStep'),v.next_step.text);setText($('nextCmd'),v.next_step.command);
+  const steps=v.steps||[v.next_step.text];setText($('betLbl'),steps.length>1?'Next steps':'Next step');
+  setHTML($('steps'),steps.map(t=>`<li>${esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>')}</li>`).join(''));setText($('nextCmd'),v.next_step.command);
   setHTML($('prov'),(v.stored.present?(v.stored.matches?'from evaluation.json · <span class="ok">matches decision.json</span>':'from evaluation.json · decision.json differs'):'from evaluation.json · no decision.json yet')+(store.trail.length>1?' · '+esc(store.trail.join(' → ')):''));
   paintRescored();patchPillars();
   if(store.verdict&&store.verdict!==vd.decision)say('Verdict changed to '+vd.label);store.verdict=vd.decision;
   if(store.drawer&&store.drawer.pillar)openPillar(store.drawer.pillar,false);
 }
 function paintRescored(){setText($('rescored'),store.dec&&store.dec.state==='ok'?'recomputed '+ago(store.decAt):'')}
-function renderGap(v){
-  const ev=[],qual={},rest=[];
-  for(const i of v.gap||[]){if(i.field==='evidence')ev.push(i.pillar);else if(i.field==='quality')(qual[i.needed]=qual[i.needed]||[]).push(i.pillar+(i.current==null?' (not assessed)':''));else rest.push(esc(i.text))}
-  const parts=[];
-  if(ev.length)parts.push(`<b title="${esc(ev.join(', '))}">proof E3+ on ${plural(ev.length,'core pillar')}</b>`);
-  for(const n of Object.keys(qual).sort((a,b)=>b-a))parts.push(`quality ${n} on ${esc(qual[n].join(', '))}`);
-  if(v.scores.weighted_quality!=null&&v.scores.weighted_quality<75)parts.push(`${(75-v.scores.weighted_quality).toFixed(1).replace(/\.0$/,'')} more quality points`);
-  setHTML($('missing'),parts.length||rest.length?'To proceed: '+parts.concat(rest).join(' · '):'');
-}
+function renderGap(v){setText($('missing'),v.why||'')}
+/* drawn at its on-screen width (1 unit = 1px) so text and dots stay the same size as the page's text at any panel width */
 function renderMap(v,tone){
-  const W=340,H=236,L=32,R=10,T=20,B=24,x=e=>L+e/5*(W-L-R),y=q=>T+(1-q/100)*(H-T-B),seen={};
+  store.mapArgs=[v,tone];const W=Math.max(300,Math.round($('mapbox').clientWidth||340)),H=Math.round(Math.min(320,Math.max(236,W*.6))),L=32,R=24,T=20,B=24,x=e=>L+e/5*(W-L-R),y=q=>T+(1-q/100)*(H-T-B),seen={};
   const pts=v.pillars.filter(p=>p.quality!=null).map(p=>{const k=p.evidence+':'+p.quality,n=seen[k]=(seen[k]||0)+1;return {...p,dx:(n%2?1:-1)*Math.floor(n/2)*22}});
   let g=`<rect class="zone" x="${x(3)}" y="${y(100)}" width="${x(5)-x(3)}" height="${y(75)-y(100)}"/><text class="zl" x="${x(5)-4}" y="${y(100)+14}" text-anchor="end">proceed</text>
 <line class="ax" x1="${L}" y1="${y(0)}" x2="${x(5)}" y2="${y(0)}"/><line class="ax" x1="${L}" y1="${y(0)}" x2="${L}" y2="${y(100)}"/>
 <line class="lim" x1="${x(3)}" y1="${y(0)}" x2="${x(3)}" y2="${y(100)-6}"/><line class="lim" x1="${L}" y1="${y(75)}" x2="${x(5)}" y2="${y(75)}"/>
 <text x="${(L+x(3))/2}" y="${T-8}" text-anchor="middle">research</text><text x="${(x(3)+x(5))/2}" y="${T-8}" text-anchor="middle">customer behavior</text>`;
-  for(let e=0;e<=5;e++)g+=`<text x="${x(e)}" y="${H-6}" text-anchor="middle">E${e}</text>`;
+  for(let e=0;e<=5;e++)g+=`<text x="${x(e)}" y="${H-6}" text-anchor="middle">${LVL[e]}<title>${e} of 5: ${PROOF[e]}</title></text>`;
   for(const q of [0,50,75,100])g+=`<text x="${L-6}" y="${y(q)+4}" text-anchor="end">${q}</text>`;
   const bet=v.next_bet&&pts.find(p=>p.key===v.next_bet.pillar&&p.evidence<3);
   if(bet){const y0=y(bet.quality*20),x0=x(bet.evidence)+bet.dx;g+=`<g class="ghost"><path d="M${x0+12} ${y0} L${x(3)-12} ${y0}"/><circle cx="${x(3)}" cy="${y0}" r="10" fill="none"/><text x="${x(3)}" y="${y0+4}" text-anchor="middle">${ABBR[bet.key]||''}</text></g>`}
   if(v.scores.weighted_quality!=null){const cx=x(v.scores.evidence_average),cy=y(v.scores.weighted_quality);
-    g+=`<g><title>The idea overall: quality ${v.scores.weighted_quality}, average proof E${Number(v.scores.evidence_average).toFixed(1)}</title><line class="cross ${tone}" x1="${L}" y1="${cy}" x2="${x(5)}" y2="${cy}"/><line class="cross ${tone}" x1="${cx}" y1="${y(0)}" x2="${cx}" y2="${T}"/><text class="ideal ${tone}" x="${x(5)}" y="${cy-6}" text-anchor="end">idea ${v.scores.weighted_quality}</text></g>`}
-  for(const p of pts)g+=`<g class="pd${p.core?'':' side'}${store.hover===p.key?' hi':''}" data-p="${esc(p.key)}" transform="translate(${x(p.evidence)+p.dx} ${y(p.quality*20)})"><title>${esc(p.name)} · quality ${p.quality} · proof E${p.evidence}</title><circle r="10"/><text text-anchor="middle" dy="4">${ABBR[p.key]||esc(p.key[0].toUpperCase())}</text></g>`;
-  setHTML($('map'),g);
+    g+=`<g><title>The idea overall: quality ${v.scores.weighted_quality}, average proof ${Number(v.scores.evidence_average).toFixed(1)} of 5</title><line class="cross ${tone}" x1="${L}" y1="${cy}" x2="${x(5)}" y2="${cy}"/><line class="cross ${tone}" x1="${cx}" y1="${y(0)}" x2="${cx}" y2="${T}"/><text class="ideal ${tone}" x="${x(5)}" y="${cy-6}" text-anchor="end">idea ${v.scores.weighted_quality}</text></g>`}
+  for(const p of pts)g+=`<g class="pd${p.core?'':' side'}${store.hover===p.key?' hi':''}" data-p="${esc(p.key)}" transform="translate(${x(p.evidence)+p.dx} ${y(p.quality*20)})"><title>${esc(p.name)} · quality ${p.quality} · proof: ${PROOF[p.evidence]}</title><circle r="10"/><text text-anchor="middle" dy="4">${ABBR[p.key]||esc(p.key[0].toUpperCase())}</text></g>`;
+  setAttr($('map'),'viewBox',`0 0 ${W} ${H}`);setHTML($('map'),g);
 }
+new ResizeObserver(()=>{if(store.mapArgs)renderMap(...store.mapArgs)}).observe($('mapbox'));
 function hiPillar(key){store.hover=key;document.querySelectorAll('[data-p]').forEach(el=>el.classList.toggle('hi',el.dataset.p===key))}
 /* drawer */
 function openDrawer(html,ref,focus){setHTML($('dBody'),html);const d=$('drawer');d.classList.add('open');store.drawer=ref;if(focus){store.back=document.activeElement;$('dClose').focus()}}

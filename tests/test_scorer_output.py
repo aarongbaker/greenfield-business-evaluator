@@ -80,17 +80,17 @@ class FieldTests(unittest.TestCase):
     def test_research_incomplete(self):
         self.assert_fields(scored(copy.deepcopy(TEMPLATE)), "RESEARCH_INCOMPLETE",
                            "Research incomplete: 8 of 8 pillars unassessed, no live web research",
-                           "Fill pillar quality scores and run live web research, then re-score.")
+                           "Ask your assistant to finish the research, then run `greenfield score`.")
 
     def test_validate_before_build(self):
         data = sample()
         data["pillars"]["economics"]["evidence"] = 0
         self.assert_fields(scored(data), "VALIDATE_BEFORE_BUILD",
                            "Evidence is thin on economics and problem: test these before building",
-                           "Add EXP-1 (Waitlist from a cold list) for problem and market with greenfield plan --add-experiments, run it, record it with greenfield evidence add, then re-score.")
+                           "Run the waitlist from a cold list test to see whether the problem is real and enough buyers exist: add it with `greenfield plan --add-experiments`, then record the result, pass or fail, with `greenfield evidence add`.")
         data["experiments"] = [{"id": "X1", "pillars": ["economics"], "hypothesis": "Ten HR leads pay $50 for a benchmark"}]
         self.assertEqual(scored(data)["next_step"],
-                         "Add EXP-1 (Waitlist from a cold list) for problem and market with greenfield plan --add-experiments, run it, record it with greenfield evidence add, then re-score.")
+                         "Run the waitlist from a cold list test to see whether the problem is real and enough buyers exist: add it with `greenfield plan --add-experiments`, then record the result, pass or fail, with `greenfield evidence add`.")
 
     def test_no_go(self):
         self.assert_fields(scorer.score_file(FIXTURES / "no-go.json")[0], "NO_GO",
@@ -102,7 +102,7 @@ class FieldTests(unittest.TestCase):
             base = pathlib.Path(d)
             self.assert_fields(scored(receipt_data(base, 1), base), "PIVOT",
                                "Behavior-backed evidence shows a severe weakness in problem, market, value, economics and…",
-                               "Reframe the idea around the weak core pillar and evaluate it as a new evaluation.json.")
+                               "Reframe the idea around its weakest core pillar and start a new run with `greenfield start --new --idea '<new framing>'`.")
             self.assert_fields(scored(receipt_data(base, 4), base), "PROCEED_TO_BOUNDED_PILOT",
                                "All five core pillars clear the evidence gates: run a bounded pilot",
                                "Run a bounded pilot against its pre-committed thresholds; do not scale yet.")
