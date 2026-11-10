@@ -1,6 +1,7 @@
 """W51: Mission Control matrix (receipts, gates, plan line) and DECISION.md (recompute, receipts table)."""
 import argparse
 import json
+import os
 import pathlib
 import shutil
 import sys
@@ -27,6 +28,7 @@ class Matrix(unittest.TestCase):
         patch = mock.patch.object(gf_ledger, "DEMO_DIR", self.folder)  # stands in for the pinned bundled path
         patch.start()
         self.addCleanup(patch.stop)
+        os.utime(self.folder / "decision.json")  # a git checkout leaves mtimes in any order; the stored decision is current
         self.rid = gf_observe.new_run(self.root, "demo copy", "claude", research_dir=self.folder)
 
     def view(self):

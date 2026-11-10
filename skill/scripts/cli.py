@@ -553,12 +553,15 @@ def build_parser():
 def render(result, args):
     if result is None:
         return
-    if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    elif args.text:
+    if args.text and not args.json:
         sys.stdout.write(args.text(result, args))
-    else:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+    text = json.dumps(result, indent=2, ensure_ascii=False)
+    try:
+        text.encode(sys.stdout.encoding or "utf-8")
+    except (UnicodeEncodeError, LookupError):  # a cp1252 Windows console: escape instead of crashing
+        text = json.dumps(result, indent=2)
+    print(text)
 
 
 def fail(err, args):
