@@ -117,7 +117,7 @@ class DashboardBrowserTest(unittest.TestCase):
         # next steps as a path: the first test is open with its five rooms, and the room to do next is marked
         self.assertEqual(page.get_attribute('#pathBody .mnode[aria-current="step"]', "aria-pressed"), "true")
         self.assertEqual(page.locator("#pathBody .room").count(), 5)
-        self.assertEqual(page.text_content('#pathBody .room[aria-current="true"]').strip(), "Send and track")
+        self.assertEqual(page.get_attribute('#pathBody .room[aria-current="true"]', "data-room"), "send")
         page.click('#pathBody [data-room="find"]')
         self.assertIn("prospects.csv", page.text_content("#pathBody .prompt"))
         self.assertTrue(page.evaluate("document.activeElement.dataset.room === 'find'"))
