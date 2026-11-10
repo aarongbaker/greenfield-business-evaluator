@@ -8,7 +8,7 @@
 :root[data-theme="dark"]{color-scheme:dark;--bg:#0b0d10;--raised:#111418;--line:#1f242b;--line-2:#2a3038;--fg:#e6e8eb;--fg-2:#9aa3ad;--fg-3:#7a838d;--run:#5cc8ff;--ok:#4cc38a;--warn:#f5b83d;--bad:#f2555a;--demo:#b48cff;--track:#161a1f;--bar-done:#2c3a33;--bar-run:#1d3a4d}
 *{box-sizing:border-box}[hidden]{display:none!important}
 html,body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--sans)}
-button,select{font:inherit;color:inherit}
+button,select,input{font:inherit;color:inherit}
 a{color:inherit;text-decoration:underline;text-decoration-color:var(--line-2);text-underline-offset:2px}
 :focus-visible{outline:2px solid var(--run);outline-offset:1px}
 .num{font-variant-numeric:tabular-nums}code{font-family:var(--mono);font-size:.93em}
@@ -30,13 +30,14 @@ a{color:inherit;text-decoration:underline;text-decoration-color:var(--line-2);te
 .dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
 .conn.live .dot{color:var(--run)}.conn.stale{color:var(--warn)}.conn.bad{color:var(--bad)}
 /* layout */
-/* verdict runs down the left at a readable width; the right side stacks lanes, pillars and log, and the log grows only to meet the verdict's height */
-main{display:grid;max-width:2400px;margin:0 auto;grid-template-columns:clamp(440px,42vw,780px) minmax(0,1fr);grid-template-rows:auto auto 1fr;grid-template-areas:"verdict lanes" "verdict matrix" "verdict log"}
+/* top row: verdict at a readable width beside the specialists; then the path across the page; then the log beside the pillars */
+main{display:grid;max-width:2400px;margin:0 auto;grid-template-columns:clamp(440px,42vw,780px) minmax(0,1fr);grid-template-areas:"verdict lanes" "path path" "log matrix"}
 section{padding:20px 24px;min-width:0}
 .verdict{grid-area:verdict;border-right:1px solid var(--line);container:verdict/inline-size}
 .lanes{grid-area:lanes;border-bottom:1px solid var(--line)}
 .matrix{grid-area:matrix;border-bottom:1px solid var(--line)}
-.logp{grid-area:log;display:flex;flex-direction:column}
+.pathp{grid-area:path;border-bottom:1px solid var(--line)}
+.logp{grid-area:log;display:flex;flex-direction:column;border-right:1px solid var(--line)}
 .h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 12px}
 .h h2{font-size:15px;font-weight:600;margin:0}
 .h .meta{color:var(--fg-2);font-size:13px;text-align:right}
@@ -164,12 +165,28 @@ th.r .hint .tip{left:auto;right:-8px}
 .tip td{border:0;padding:1px 8px 1px 0;font-size:12px}
 .tip td:first-child{font-weight:600;color:var(--fg)}
 .tip tr.cutrow td{border-top:1px dashed var(--line-2);padding-top:4px}
+/* path: the route as a row of stops; a test opens into rooms, each with one helper */
+.map{display:flex;padding:2px 0 4px}
+.mnode{position:relative;flex:1 1 0;min-width:0;padding:8px 12px;border:1px solid var(--line-2);border-radius:8px;background:var(--raised);text-align:left;cursor:pointer}
+.mnode+.mnode{margin-left:22px}.mnode+.mnode::before{content:"";position:absolute;left:-23px;top:50%;width:22px;height:2px;background:var(--line-2)}
+.mnode .k{display:block;font-size:12px;color:var(--fg-2)}.mnode .k .g{margin-right:6px}.mnode .name{display:block;font-weight:500}
+.mnode:hover{border-color:var(--fg-3)}.mnode[aria-pressed="true"]{border-color:var(--fg);box-shadow:inset 0 0 0 1px var(--fg)}
+.mnode.failed{border-color:var(--bad)}.mnode.locked{border-style:dashed}.mnode.locked .name{color:var(--fg-2)}
+.pdetail{margin-top:16px;max-width:88ch}.pdetail h3{margin:0 0 4px;font-size:15px}.pdetail p{margin:0 0 8px}
+.rooms{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:14px 0 12px;padding:0}
+.room{padding:5px 10px;border:1px solid var(--line-2);border-radius:6px;background:none;cursor:pointer}.room .g{margin-right:6px}
+.room:hover{border-color:var(--fg-3)}.room[aria-pressed="true"]{border-color:var(--fg);box-shadow:inset 0 0 0 1px var(--fg)}
+.roombody .q{font-weight:600}
+.prompt{display:flex;gap:8px;align-items:flex-start;margin:8px 0;padding:8px 8px 8px 12px;border:1px solid var(--line-2);border-radius:8px;font-size:13px;overflow-wrap:anywhere}.prompt p{flex:1;margin:0}
+.pace input{width:5em;margin-left:8px;padding:2px 6px;border:1px solid var(--line-2);border-radius:6px;background:var(--raised)}
+.pm{margin:14px 0 6px;max-width:40ch}
+.others{margin:14px 0 0;color:var(--fg-2);font-size:13px}.others ul{margin:4px 0 0;padding-left:18px}
 /* log */
 .filters{display:flex;gap:2px}
 .filters button{background:none;border:1px solid transparent;border-radius:6px;padding:2px 8px;color:var(--fg-2);cursor:pointer;font-size:13px}
 .filters button[aria-pressed="true"]{color:var(--fg);border-color:var(--line-2)}
 .filters .n{color:var(--warn);margin-left:4px}
-.logwrap{position:relative;flex:1 0 200px}
+.logwrap{position:relative;flex:1 0 280px}
 .feed{position:absolute;inset:0;overflow-y:auto;overflow-anchor:none;font:13px/1.2 var(--sans);font-variant-numeric:tabular-nums;border-top:1px solid var(--line)}
 .row{display:grid;grid-template-columns:5em 7em 4.5em minmax(0,1fr);gap:10px;align-items:center;min-height:26px;padding:0 4px;white-space:nowrap}
 .row>span:last-child{white-space:normal;overflow-wrap:anywhere;padding:4px 0}
@@ -198,8 +215,8 @@ th.r .hint .tip{left:auto;right:-8px}
 .keys kbd{font:12px var(--mono);color:var(--fg)}
 .help p{color:var(--fg-2);font-size:13px;margin:14px 0 0}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
-@media (forced-colors:active){.span,.node,.ladder i,.seg i,.sbar,.pbar,.pts,.tick{border:1px solid CanvasText}}
-@media (max-width:1100px){main{grid-template-columns:1fr;grid-template-rows:none;grid-template-areas:"verdict" "lanes" "matrix" "log"}.verdict{border-right:0;border-bottom:1px solid var(--line)}.matrix{border-right:0;border-bottom:1px solid var(--line)}
+@media (forced-colors:active){.span,.node,.mnode,.room,.ladder i,.seg i,.sbar,.pbar,.pts,.tick{border:1px solid CanvasText}}
+@media (max-width:1100px){main{grid-template-columns:1fr;grid-template-rows:none;grid-template-areas:"verdict" "lanes" "path" "matrix" "log"}.verdict,.logp{border-right:0}.verdict{border-bottom:1px solid var(--line)}.matrix{border-right:0;border-bottom:1px solid var(--line)}
 }
 /* a verdict panel wide enough for two columns: map with the verdict's words beside it, steps below in two columns that read down */
 @container verdict (min-width:700px){
@@ -213,6 +230,7 @@ th.r .hint .tip{left:auto;right:-8px}
   section{padding:14px 12px}
   .axis,.nowline,.legend,.lane .track,.lane .cnt,.pts,#viewSw,.hide-sm{display:none}
   .lanebox{margin-top:0}.crow{grid-template-columns:minmax(0,1fr)}
+  .map{flex-direction:column}.mnode+.mnode{margin:10px 0 0}.mnode+.mnode::before{left:20px;top:-11px;width:2px;height:10px}
   .row{gap:8px}
 }
 @media print{.bar button,.lanes,.logp,.drawer,.help,.betbox .cmd{display:none!important}main{grid-template-columns:1fr 1fr;grid-template-areas:"verdict matrix"}}
@@ -252,6 +270,10 @@ th.r .hint .tip{left:auto;right:-8px}
 <div class="lanebox" id="lanebox"><div id="agents"><div class="empty">No agents have started.</div></div>
 <div class="axis" aria-hidden="true"><span></span><div class="labels" id="axis"></div><span></span><span></span></div><div class="nowline" id="nowline" hidden></div></div>
 <div class="legend" aria-hidden="true"><span><i class="lt" style="background:var(--run)"></i>search</span><span><i class="lt" style="background:var(--fg-2)"></i>fetch</span><span><i class="lt" style="background:var(--fg-3)"></i>read</span><span><i class="ld"></i>source</span><span><b style="color:var(--bad)">✕</b> failed call</span></div></div>
+</section>
+<section class="pathp" id="pathp" aria-labelledby="ph" hidden>
+<div class="h"><h2 id="ph">Next steps</h2><span class="meta">This page only reads your files; nothing here sends or saves.</span></div>
+<div id="pathBody"></div>
 </section>
 <section class="matrix" aria-labelledby="mh">
 <div class="h"><h2 id="mh">Pillars</h2><span class="meta num" id="mMeta"></span></div>
@@ -298,7 +320,7 @@ const PROOF=['nothing recorded','interviews or surveys','reviewed sources','a re
 const GLYPH={Done:['✓','done'],Failed:['✕','fail'],Running:['●','run'],Claimed:['●','run'],Quiet:['◌','wait'],Stopped:['–','none'],Queued:['○','queued']};
 const EMPTY={no_research_dir:['No research folder linked','This run does not know which research folder it produces yet, so there is no verdict to show.'],no_evaluation:['No evaluation yet','The linked folder has no evaluation.json.'],invalid:["Can't score this evaluation",'evaluation.json has input errors, so no verdict is shown.'],invalid_path:['Research folder is outside this project','The linked path leaves the project folder, so it was not read.']};
 const store={run:null,rev:null,runsTag:null,runSig:'',lastId:null,state:null,dec:null,decEtag:undefined,decAt:0,verdict:null,trail:[],lastOk:0,errDelay:1500,failing:false,retryAt:0,timer:0,busy:false,
-  seen:new Set(),groups:[],counts:{},filter:'all',marks:{},roles:[],pending:0,follow:true,say:'',lastSay:0,sayTimer:0,drawer:null,sel:-1,hover:null,view:'graph',openLanes:false};
+  seen:new Set(),groups:[],counts:{},filter:'all',marks:{},roles:[],pending:0,follow:true,say:'',lastSay:0,sayTimer:0,drawer:null,sel:-1,hover:null,view:'graph',openLanes:false,node:null,room:null,pace:20};
 const clock=x=>{const d=new Date(x);return isNaN(d)?'—':d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})};
 const hm=x=>{const d=new Date(x);return isNaN(d)?'—':d.toLocaleString([],{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})};
 const dur=ms=>{const s=Math.max(0,Math.floor(ms/1000)),h=Math.floor(s/3600),m=Math.floor(s/60)%60,p=n=>String(n).padStart(2,'0');return h?h+':'+p(m)+':'+p(s%60):p(m)+':'+p(s%60)};
@@ -352,7 +374,7 @@ function patchRuns(d){
   if(sig!==store.runSig){store.runSig=sig;$('runs').innerHTML=runs.map(r=>`<option value="${esc(r.run_id)}">${esc(runLabel(r))}</option>`).join('')||'<option value="">No runs</option>'}
   if(store.run&&$('runs').value!==store.run)$('runs').value=store.run;
 }
-function switchRun(id){store.run=id;store.rev=null;store.lastId=null;store.state=null;store.decEtag=undefined;store.verdict=null;store.trail=[];store.marks={};closeDrawer(true);resetFeed();$('agents')._built=null;$('pillars').replaceChildren();writeHash()}
+function switchRun(id){store.run=id;store.rev=null;store.lastId=null;store.state=null;store.decEtag=undefined;store.verdict=null;store.trail=[];store.marks={};store.node=null;store.room=null;closeDrawer(true);resetFeed();$('agents')._built=null;$('pillars').replaceChildren();writeHash()}
 function applyState(s){
   if(s.empty)return;
   const prev=store.state,evs=s.events_delta||s.events||[];
@@ -515,7 +537,7 @@ function setFilter(f){store.filter=f;store.groups.forEach(g=>g.node.hidden=!visi
 /* verdict */
 function renderDecision(v){
   store.dec=v;store.decAt=Date.now();const ok=!!v&&v.state==='ok',banner=$('banner');
-  show($('decBody'),ok);show($('decEmpty'),!ok);
+  show($('decBody'),ok);show($('decEmpty'),!ok);renderPath(v);
   if(ok&&v.stored.present&&!v.stored.matches){const said=v.stored.decision?v.verdicts[v.stored.decision].label:'an unreadable or different result';setText(banner,`decision.json says ${said}; recomputed from evaluation.json: ${v.verdict.label}. Showing the recomputed verdict.`);setCls(banner,'banner bad');show(banner,true)}
   else if(ok&&v.stale){setText(banner,'decision.json is older than evaluation.json or its evidence files. Re-run the scorer to refresh it.');setCls(banner,'banner warn');show(banner,true)}
   else show(banner,false);
@@ -543,8 +565,38 @@ function renderCheck(v,tone){
   const q=v.scores.weighted_quality,core=v.pillars.filter(p=>p.core),done=core.filter(p=>p.evidence>=3).length,g=v.progress;
   let h=(q==null?'':`<div class="sbar ${tone}" aria-hidden="true"><b style="width:${Math.min(100,q)}%"></b><s></s><span>75 to proceed</span></div>`)+(g?`<p class="vnow">Next: test ${g.next} of ${g.total}. ${g.passed} passed, ${g.failed} failed. About ${plural(Math.max(1,Math.round(g.days_left/7)),'week')} of testing left.</p>`:'')+`<p class="clbl">${done} of ${core.length} core questions tested with customers</p>`;
   for(const p of core){const e=p.evidence,t=(v.tests||{})[p.key];
-    h+=`<button type="button" class="crow${store.hover===p.key?' hi':''}" data-p="${esc(p.key)}"><span class="q">${esc(p.ask)}</span><span class="stage"><span class="seg" aria-hidden="true">${[2,3,4].map(n=>`<i class="${e>=n?'on'+(e>=3?' ok':''):''}"></i>`).join('')}</span>${STAGE[e]}</span>${e<3&&t?`<span class="nx">Next: ${esc(t.title)} (step ${t.n})</span>`:''}</button>`}
+    h+=`<button type="button" class="crow${store.hover===p.key?' hi':''}" data-p="${esc(p.key)}"><span class="q">${esc(p.ask)}</span><span class="stage"><span class="seg" aria-hidden="true">${[2,3,4].map(n=>`<i class="${e>=n?'on'+(e>=3?' ok':''):''}"></i>`).join('')}</span>${STAGE[e]}</span>${e<3&&t?`<span class="nx">Next: ${esc(t.title)}${v.path?'':' (step '+t.n+')'}</span>`:''}</button>`}
   setHTML($('mapbox'),h);
+}
+/* next steps as a path (replaces the numbered list while a route is open) */
+const cmdBox=c=>`<div class="cmd"><span class="p">$</span><code tabindex="0" title="Show the whole command">${esc(c)}</code><button type="button" class="iconbtn" data-copy>copy</button></div>`;
+function paceText(n){const d=Math.ceil(n/store.pace),end=new Date(Date.now()+(d-1)*864e5).toLocaleDateString([],{day:'numeric',month:'short'});
+  return plural(n,'person','people')+' at '+store.pace+' a day takes '+plural(d,'sending day')+'. Starting today, the last batch goes out on '+end+'.'}
+function renderPath(v){
+  const p=v&&v.state==='ok'&&v.path;show($('pathp'),!!p);show($('betbox'),!p);if(!p)return;
+  const ns=p.nodes;if(store.node==null||!ns[store.node]){store.node=Math.max(0,ns.findIndex(n=>n.state==='next'));store.room=null}
+  const cur=ns[store.node];let t=ns.filter(n=>n.kind==='result'&&n.state==='done').length;
+  let h='<div class="map" role="group" aria-label="Route">'+ns.map((n,i)=>{const [g,gc]=n.state==='done'?['✓','done']:n.state==='failed'?['✕','fail']:n.state==='next'?['●','run']:['○','queued'];
+    const k=n.kind==='test'?'Test '+(++t)+(n.locked?', not added yet':''):n.kind==='sources'?'Before the tests':n.kind==='score'?'After the tests':n.state==='done'?'Passed':'Failed';
+    return `<button type="button" class="mnode ${n.state}${n.locked?' locked':''}" data-node="${i}" aria-pressed="${i===store.node}"${n.state==='next'?' aria-current="step"':''}><span class="k"><span class="g ${gc}" aria-hidden="true">${g}</span>${k}</span><span class="name">${esc(n.title)}</span></button>`}).join('')+'</div>';
+  h+=`<div class="pdetail"><h3>${esc(cur.title)}</h3>`;
+  if(cur.kind!=='test')h+=`<p>${esc(cur.help)}</p>`+(cur.commands||[]).map(cmdBox).join('');
+  else{
+    h+=`<p class="dim">${esc(cur.how)} It passes if ${esc(cur.pass)}.</p>`;
+    if(cur.locked)h+='<p>Add the tests on this route to your project first. Then each one opens here.</p>'+cmdBox(p.add);
+    else{
+      const live=cur.rooms.find(r=>!r.done),sel=cur.rooms.find(r=>r.key===store.room)||live||cur.rooms[0],m=cur.meter;
+      h+='<ol class="rooms">'+cur.rooms.map(r=>{const st=r.done?['✓','done','done']:r===live?['●','run','do this next']:['○','queued','to do'];
+        return `<li><button type="button" class="room" data-room="${esc(r.key)}" aria-pressed="${r===sel}"${r===live?' aria-current="true"':''} aria-label="${esc(r.name+', '+st[2]+(r.count?', '+r.count:''))}"><span class="g ${st[1]}" aria-hidden="true">${st[0]}</span>${esc(r.name)}${r.count?` <span class="dim num">${esc(r.count)}</span>`:''}</button></li>`}).join('')+'</ol>';
+      h+=`<div class="roombody"><p class="q">${esc(sel.ask)}</p><p>${esc(sel.help)}</p>${sel.prompt?`<div class="prompt"><p>${esc(sel.prompt)}</p><button type="button" class="iconbtn" data-copy>copy</button></div>`:''}${(sel.commands||[]).map(cmdBox).join('')}`;
+      if(sel.key==='send'&&m)h+=`<p><label class="pace">Messages a day (your call; start low)<input id="pace" type="number" min="1" max="500" value="${store.pace}" data-n="${m.people}"></label></p><p id="paceOut" class="dim">${esc(paceText(m.people))}</p>`;
+      h+='</div>';
+      if(m)h+=`<div class="sbar pm" aria-hidden="true"><b style="width:${Math.min(100,m.hits/m.pass*100)}%"></b></div><p class="dim">${m.hits} of ${m.pass} ${esc(m.unit)}, from ${m.contacted} contacted</p>`;
+    }
+  }
+  h+=(p.warnings||[]).map(w=>`<p class="rc t-warn">${esc(w)}</p>`).join('')+'</div>';
+  if(p.others.length)h+='<div class="others">Other routes the planner found:<ul>'+p.others.map(o=>`<li>${esc(o.text)}${o.command?` <code>${esc(o.command)}</code>`:''}</li>`).join('')+'</ul></div>';
+  setHTML($('pathBody'),h);
 }
 function hiPillar(key){store.hover=key;document.querySelectorAll('[data-p]').forEach(el=>el.classList.toggle('hi',el.dataset.p===key))}
 /* drawer */
@@ -579,6 +631,10 @@ function evidenceHTML(d){
 }
 /* wiring */
 for(const box of ['agents','graph'])$(box).addEventListener('click',e=>{const b=e.target.closest('[data-agent]');if(!b)return;store.sel=+b.dataset.i;openAgent(b.dataset.agent)});
+$('pathBody').addEventListener('click',e=>{const n=e.target.closest('[data-node]'),r=e.target.closest('[data-room]');if(!n&&!r)return;
+  if(n){store.node=+n.dataset.node;store.room=null}else store.room=r.dataset.room;
+  renderPath(store.dec);const el=$('pathBody').querySelector(n?`[data-node="${store.node}"]`:`[data-room="${CSS.escape(store.room)}"]`);if(el)el.focus()});// the panel is redrawn, so put focus back where it was
+$('pathBody').addEventListener('input',e=>{if(e.target.id!=='pace')return;store.pace=Math.min(500,Math.max(1,Math.floor(+e.target.value)||1));setText($('paceOut'),paceText(+e.target.dataset.n))});
 $('viewSw').addEventListener('click',e=>{const b=e.target.closest('[data-v]');if(!b)return;store.view=b.dataset.v;try{localStorage.setItem('gf-view',store.view)}catch(err){}paintLanes()});
 $('laneToggle').onclick=()=>{store.openLanes=!store.openLanes;paintLanes()};
 for(const box of ['mapbox','pbar','pillars']){$(box).addEventListener('click',e=>{const r=e.target.closest('[data-p]');if(r)openPillar(r.dataset.p)});$(box).addEventListener('mouseover',e=>{const t=e.target.closest('[data-p]');hiPillar(t?t.dataset.p:null)});$(box).addEventListener('mouseleave',()=>hiPillar(null))}

@@ -33,7 +33,7 @@ greenfield_evaluator = "skill"
 "greenfield_evaluator.platform" = "platform"
 
 [tool.setuptools.package-data]
-greenfield_evaluator = ["SKILL.md", "assets/*", "assets/demo-research/*", "assets/demo-proceed/*", "assets/demo-proceed/receipts/*", "references/*.md"]
+greenfield_evaluator = ["SKILL.md", "assets/*", "assets/demo-research/*", "assets/demo-research/outreach/*/*", "assets/demo-proceed/*", "assets/demo-proceed/receipts/*", "references/*.md"]
 "greenfield_evaluator.platform" = ["claude/agents/*.md", "codex/agents/*.toml"]
 
 [tool.setuptools.dynamic]

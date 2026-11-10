@@ -355,7 +355,7 @@ def h_plan(args):
     ev = args.evaluation or _ctx(args)["evaluation"]
     if args.add_experiments:
         gf_materials.refuse_demo(Path(ev).resolve().parent)
-    return gf_plan.for_cli(ev, target=args.target, top=args.top, profile=args.profile, add=args.add_experiments)
+    return gf_plan.for_cli(ev, target=args.target, top=args.top, profile=args.profile, add=args.add_experiments, route=args.route)
 
 
 def t_plan(data, args):
@@ -557,6 +557,7 @@ def build_parser():
     p.add_argument("--profile", choices=sorted(PROFILES), help="what-if: plan under another profile without editing the file")
     p.add_argument("--top", type=int, default=3, help="how many routes to show (default 3)")
     p.add_argument("--add-experiments", action="store_true", help="write the top route's new experiments into evaluation.json")
+    p.add_argument("--route", type=int, default=1, metavar="N", help="with --add-experiments: write route N of the plan instead of the first")
 
     p = _cmd(sub, "portfolio", "rank several scored ideas against each other", [
         "greenfield portfolio portfolio.json --output ranking.json", "greenfield portfolio portfolio.json --output ranking.json --markdown ranking.md"], h_portfolio)

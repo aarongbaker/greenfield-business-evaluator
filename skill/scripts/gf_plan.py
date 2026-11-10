@@ -298,7 +298,8 @@ def plan(data, facts=None, *, target=75, top=3, profile=None, slug=None, warning
     routes = [_finish(r, st, gates, slug) for r in _routes(st, target, aim)]
     for r in routes:
         r["slack"] = round(r["total"] - target, 1)
-    routes.sort(key=lambda r: (r["slack"] < 1.0, r["receipts"], r["days"], r["usd"], -r["total"]))
+    # a route whose tests are all in evaluation.json already is the one the founder chose (`plan --add-experiments --route N`)
+    routes.sort(key=lambda r: (r["slack"] < 1.0, any(s["new_experiment"] for s in r["steps"]), r["receipts"], r["days"], r["usd"], -r["total"]))
     firsts = set()
     for r in routes:
         first = (r["steps"][0]["entry"]["id"], tuple(r["steps"][0]["pillars"]), r["steps"][0].get("gate")) if r["steps"] else None
@@ -368,7 +369,7 @@ def add_experiments(ev_path, route):
     return added
 
 
-def for_cli(ev_path, *, target=75, top=3, profile=None, add=False):
+def for_cli(ev_path, *, target=75, top=3, profile=None, add=False, route=1):
     """`greenfield plan`: validate and score the evaluation, plan from it, optionally write the new experiments."""
     import score_project
     from gf_common import GFError, load_json
@@ -379,8 +380,10 @@ def for_cli(ev_path, *, target=75, top=3, profile=None, add=False):
         raise GFError(f"{len(errors)} problem(s) to fix before planning; first: {errors[0]}", path=ev_path, hint=f"greenfield score {ev_path}")
     facts = warnings.facts
     current = score_project.score(copy.deepcopy(data), warnings)
-    out = plan(data, facts, target=target, top=top, profile=profile, warnings=current["warnings"], folder=ev_path.parent)
-    added = add_experiments(ev_path, out["routes"][0]) if add and out["routes"] else []
+    out = plan(data, facts, target=target, top=max(top, route), profile=profile, warnings=current["warnings"], folder=ev_path.parent)
+    if not 1 <= route <= max(1, len(out["routes"])):
+        raise GFError(f"there is no route {route}: the plan has {len(out['routes'])}", path=ev_path, hint="greenfield plan")
+    added = add_experiments(ev_path, out["routes"][route - 1]) if add and out["routes"] else []
     return {"current": {k: current[k] for k in ("decision", "verdict_label", "weighted_quality_0_to_100", "quality_scores", "evidence_scores")},
             **{k: v for k, v in out.items() if k != "routes"}, "routes": [summary(r) for r in out["routes"]], "added_experiments": added}
 

@@ -7,6 +7,7 @@ network requests or agent responses are captured. Web server binds to loopback o
 from __future__ import annotations
 import argparse
 import contextlib
+import csv
 import datetime as dt
 import hashlib
 import http.server
@@ -491,6 +492,110 @@ def _steps(result, step, demo=False):
     return out, tests
 
 
+# W59: every test is worked through the same rooms; a room is done when the founder or the assistant has written its file
+ROOMS = (("who", "Who", "Who exactly are you testing with?", "audience.md"), ("say", "What to say", "What will you show or send them?", "messages.md"),
+         ("find", "Find people", "Where do they come from?", "prospects.csv"), ("send", "Send and track", "Is it out, and what came back?", "log.csv"),
+         ("record", "Record result", "Did it pass the mark you set?", None))
+LOG_COLUMNS = ("id", "sent_on", "variant", "replied", "result")
+
+
+def _rows(path, need):
+    """(data rows, warning) of a small CSV the founder keeps. Missing, unreadable or wrongly headed files count as no rows, never a crash."""
+    try:
+        if path.stat().st_size > 2_000_000:
+            return [], f"{path.name} is over 2 MB and was not read"
+        with path.open(newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            rows = [r for r in reader if any((v or "").strip() for v in r.values() if isinstance(v, str))]
+            if not set(need) <= set(reader.fieldnames or ()):
+                return [], f"{path.name} needs the columns {', '.join(need)}"
+            return rows, None
+    except FileNotFoundError:
+        return [], None
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return [], f"{path.name} could not be read"
+
+
+def _rooms(folder, rel, step, files):
+    """One test's rooms with done flags, counts and the pass meter. Sends counts only: no row of either file leaves the machine's disk."""
+    e, exp = step["entry"], step["experiment_id"]
+    title, target, where = e["title"], e.get("target"), f"{rel}/outreach/{exp}"
+    record = {"key": "record", "name": "Record result", "ask": ROOMS[4][2], "done": False, "count": "",
+              "help": f"When the test is over, judge it against the mark you set: it passes if {e['pass_hint']}. Do not change the mark afterwards. Bring: {e['bring']}.",
+              "commands": [c for c in (step["redact"] if (step["redact"] or "").startswith("greenfield") else None, step["command"]) if c]}
+    if not step["pillars"] or not exp or not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", exp):  # a gate-only step has nobody to contact
+        return [{"key": "prepare", "name": "Prepare", "ask": "What do you need to bring?", "done": False, "count": "", "help": f"{e['how']} Bring: {e['bring']}."}, record], None, []
+    state, warnings = {}, []
+    for name in ("audience.md", "messages.md", "prospects.csv", "log.csv"):
+        with contextlib.suppress(GFError):
+            files.append(resolve_inside(folder, f"outreach/{exp}/{name}"))
+            state[name] = files[-1]
+    has = lambda name: name in state and state[name].is_file() and state[name].stat().st_size > 0
+    people, w1 = _rows(state["prospects.csv"], ("id",)) if "prospects.csv" in state else ([], None)
+    log, w2 = _rows(state["log.csv"], LOG_COLUMNS) if "log.csv" in state else ([], None)
+    warnings += [w for w in (w1, w2) if w]
+    n = target["people"] if target else None
+    prompts = {  # pasted to the assistant, which writes the room's file
+        "who": f"Using the findings in this run, write a one-page audience card for the test '{title}' and save it as {where}/audience.md. "
+               "Name one narrow group of people, where they can be reached, and what would rule someone out.",
+        "say": f"Read {where}/audience.md, then draft three short variants of what I will send for the test '{title}' and save them as {where}/messages.md. "
+               "Keep each under 90 words with one ask and a line that lets people opt out. Claim nothing about the product that the research does not support.",
+        "find": f"Research {n or 'the'} people who fit {where}/audience.md from public pages and save them as {where}/prospects.csv with the columns "
+                "id, name, role, company, source_url, contact. Record the page each row came from. Do not contact anyone.",
+    }
+    helps = {
+        "who": "Ask your assistant for an audience card. Paste this:",
+        "say": "Ask your assistant for drafts. You read and approve every message before it goes. Paste this:",
+        "find": "Ask your assistant to research a list, or bring your own in the same columns. Your assistant reads this file to do the work, so the names in it reach your AI provider. Paste this:",
+        "send": f"You send; this tool never does. Keep {where}/log.csv with the columns {', '.join(LOG_COLUMNS)}: one row per person, by id only, "
+                "and write yes under result when they do what the test counts.",
+    }
+    count = {"find": f"{len(people)} of {n}" if n and people else str(len(people) or ""), "send": f"{len(log)} sent" if log else ""}
+    done = {"who": has("audience.md"), "say": has("messages.md"), "find": bool(people), "send": bool(log)}
+    rooms = [{"key": k, "name": name, "ask": ask, "done": done[k], "count": count.get(k, ""), "help": helps[k], "prompt": prompts.get(k)} for k, name, ask, _ in ROOMS[:4]] + [record]
+    hits = sum((r.get("result") or "").strip().lower() == "yes" for r in log)
+    meter = {"hits": hits, "contacted": len(log), **target} if target else None
+    return rooms, meter, warnings
+
+
+def _path(data, folder, rel, result, facts, demo, files):
+    """The route as a map (W59): tests already recorded, each test still to run with its rooms, then the re-score. None when there is no route."""
+    import gf_plan
+    if result["decision"] != "VALIDATE_BEFORE_BUILD" or not result.get("route"):
+        return None, []
+    try:
+        routes = gf_plan.plan(data, facts, top=3, warnings=result["warnings"], folder=folder, slug=Path(rel).name)["routes"]
+    except (KeyError, TypeError, ValueError, AttributeError):  # same rule as gf_plan.choose: the planner never breaks the page
+        routes = []
+    if not routes:
+        return None, []
+    weeks = lambda r: max(1, round(r["days"] / 7))
+    method = {x.get("id"): x.get("method") for x in data.get("experiments") or [] if isinstance(x, dict)}
+    nodes = [{"kind": "sources", "title": "Check your sources", "state": "todo",
+              "help": "Check that the web pages your research cites say what it claims, then confirm each claim with the command the second one shows.",
+              "commands": ["greenfield sources check --allow-network", "greenfield evidence status"]}] if result["source_review_pending"] else []
+    for e in facts["counted"]:
+        if e.get("result") in ("pass", "fail") and e.get("experiment_id"):
+            nodes.append({"kind": "result", "title": safe_text(method.get(e["experiment_id"]) or e["experiment_id"], 60), "state": "done" if e["result"] == "pass" else "failed",
+                          "help": safe_text(e.get("outcome") or "", 200) if e["result"] == "pass" else
+                          "This test failed. Change the plan and run the test again, or stop and reframe the idea as a new run. A failed result stays on the record."})
+    warnings = []
+    for i, s in enumerate(routes[0]["steps"]):
+        locked = s["new_experiment"] and not demo  # the bundled demo is read-only, so its tests are never added
+        rooms, meter, w = ([], None, []) if locked else _rooms(folder, rel, s, files)
+        warnings += w
+        nodes.append({"kind": "test", "title": s["entry"]["title"], "id": s["experiment_id"], "state": "todo", "locked": locked, "how": s["entry"]["how"],
+                      "pass": s["entry"]["pass_hint"], "rooms": rooms, "meter": meter})
+    first = next((n for n in nodes if n["kind"] == "test"), None)
+    if first:
+        first["state"] = "next"
+    nodes.append({"kind": "score", "title": "Re-score", "state": "todo", "help": f"When the results are in, update the verdict. This route expects a score of {routes[0]['total']:g}.", "commands": ["greenfield score"]})
+    others = [{"text": f"Start with {r['steps'][0]['entry']['title'][0].lower()}{r['steps'][0]['entry']['title'][1:]}: {len(r['steps'])} test{'' if len(r['steps']) == 1 else 's'}, about {weeks(r)} week{'' if weeks(r) == 1 else 's'}",
+               "command": None if demo else f"greenfield plan --add-experiments --route {n}"} for n, r in enumerate(routes[1:], 2) if r["steps"]]
+    add = None if demo or not any(s["new_experiment"] for s in routes[0]["steps"]) else "greenfield plan --add-experiments"
+    return {"nodes": nodes, "others": others, "add": add, "warnings": warnings}, files
+
+
 def _why(result):
     """One line on what Proceed still needs, in counts a founder can check."""
     if result["decision"] != "VALIDATE_BEFORE_BUILD":
@@ -585,6 +690,10 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
     gap = verdict_gap(result)
     matrix = _matrix(data, folder, result)
     steps, tests = _steps(result, step, meta.get("demo"))
+    facts = matrix.pop("facts")
+    path, watched = (_path(data, folder, "research/greenfield/demo-research" if meta.get("demo") else rd, result, facts, meta.get("demo"), [])
+                     if step == result["next_step"] else (None, []))
+    extra += watched  # room state is read from these files, so they key the cache
     return {"state": "ok", "research_dir": rd, "demo": bool(meta.get("demo")), "project": safe_text(result["project"], 120),
             "verdict": {"decision": d, **VERDICTS[d], "headline": result["headline"], "reason": result["reason"]},
             "verdicts": VERDICTS,
@@ -598,7 +707,7 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
                           "missing_pilot_gates": result["missing_pilot_gates"], "source_review_open": result["source_review_pending"],
                           "warnings": [safe_text(w, 200) for w in warnings[:10]], "warning_count": len(result["warnings"])},
             "gap": gap, "gap_text": gap_text(gap), "next_bet": bet, "next_step": {"text": step, "command": _command(result, rescore, meta.get("demo"))},
-            "steps": steps, "tests": tests, "why": _why(result),
+            "steps": steps, "tests": tests, "path": path, "why": _why(result),
             "stored": stored, "stale": stale, "errors": []}, extra
 
 
@@ -633,7 +742,7 @@ def _matrix(data, folder, result):
     done = Counter(e.get("result") for e in facts["counted"])
     # the route is re-planned after every receipt, so the whole run is the tests already passed plus the ones still on it
     progress = {"next": done["pass"] + 1, "total": done["pass"] + len(route["steps"]), "passed": done["pass"], "failed": done["fail"], "days_left": route["days"]} if route and route["steps"] else None
-    return {"pillars": pillars, "gates": gates, "plan": plan, "progress": progress, "carried": "receipts carried across an idea change" in result["warnings"]}
+    return {"facts": facts, "pillars": pillars, "gates": gates, "plan": plan, "progress": progress, "carried": "receipts carried across an idea change" in result["warnings"]}
 
 
 def evidence_view(project, run_id, pillar):

@@ -1,0 +1,13 @@
+id,name,role,company,source_url,contact
+P001,SAMPLE Person 1,Owner,SAMPLE Laundry 1,https://example.invalid/directory/1,contact form on the listing
+P002,SAMPLE Person 2,Owner,SAMPLE Laundry 2,https://example.invalid/directory/2,contact form on the listing
+P003,SAMPLE Person 3,Owner,SAMPLE Laundry 3,https://example.invalid/directory/3,contact form on the listing
+P004,SAMPLE Person 4,Owner,SAMPLE Laundry 4,https://example.invalid/directory/4,contact form on the listing
+P005,SAMPLE Person 5,Owner,SAMPLE Laundry 5,https://example.invalid/directory/5,contact form on the listing
+P006,SAMPLE Person 6,Owner,SAMPLE Laundry 6,https://example.invalid/directory/6,contact form on the listing
+P007,SAMPLE Person 7,Owner,SAMPLE Laundry 7,https://example.invalid/directory/7,contact form on the listing
+P008,SAMPLE Person 8,Owner,SAMPLE Laundry 8,https://example.invalid/directory/8,contact form on the listing
+P009,SAMPLE Person 9,Owner,SAMPLE Laundry 9,https://example.invalid/directory/9,contact form on the listing
+P010,SAMPLE Person 10,Owner,SAMPLE Laundry 10,https://example.invalid/directory/10,contact form on the listing
+P011,SAMPLE Person 11,Owner,SAMPLE Laundry 11,https://example.invalid/directory/11,contact form on the listing
+P012,SAMPLE Person 12,Owner,SAMPLE Laundry 12,https://example.invalid/directory/12,contact form on the listing

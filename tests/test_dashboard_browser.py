@@ -114,6 +114,14 @@ class DashboardBrowserTest(unittest.TestCase):
         self.assertEqual(page.locator("#graph .node").count(), 11)  # orchestrator, 8 specialists, red team, verdict
         self.assertTrue(page.is_visible('#graph [data-agent="gf-redteam"]'))
         self.assertTrue(page.is_hidden("#lanebox"))
+        # next steps as a path: the first test is open with its five rooms, and the room to do next is marked
+        self.assertEqual(page.get_attribute('#pathBody .mnode[aria-current="step"]', "aria-pressed"), "true")
+        self.assertEqual(page.locator("#pathBody .room").count(), 5)
+        self.assertEqual(page.text_content('#pathBody .room[aria-current="true"]').strip(), "Send and track")
+        page.click('#pathBody [data-room="find"]')
+        self.assertIn("prospects.csv", page.text_content("#pathBody .prompt"))
+        self.assertTrue(page.evaluate("document.activeElement.dataset.room === 'find'"))
+        self.assertTrue(page.is_hidden("#betbox"))
         self.assertIn("Next: test 1 of 3.", page.text_content("#mapbox"))
         self.assertTrue(page.is_hidden("#banner"))
         self.assertTrue(page.is_visible("#demoTag"))
