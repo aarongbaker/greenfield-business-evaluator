@@ -4,7 +4,7 @@
 As of 2026-10-23 · Profile: general · Research: live web, single-agent fallback · Scorer 2.2.0 · decision.json sha256 abab…abab
 
 > [!TIP]
-> **VALIDATE_BEFORE_BUILD.** Evidence is thin on problem and market: test these before building
+> **VALIDATE_BEFORE_BUILD.** No customer test yet on any of the 5 core questions: test them before building
 >
 > Weighted quality 73 / 100 · Evidence average 2.0 / 5 · no pilot gates
 

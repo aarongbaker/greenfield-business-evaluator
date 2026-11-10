@@ -112,11 +112,15 @@ def artifact_digest(path, base):
     return {'path': p.relative_to(root).as_posix(), 'sha256': hash_obj.hexdigest(), 'bytes': p.stat().st_size}
 
 
+def config_dir():
+    """Where the signing key lives by default; the agent guard protects this same folder."""
+    return Path(os.environ.get('GF_CONFIG_DIR') or Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'greenfield')
+
+
 def key_path():
     if os.environ.get('GF_ATTEST_KEY_FILE'):
         return Path(os.environ['GF_ATTEST_KEY_FILE']).expanduser()
-    folder = os.environ.get('GF_CONFIG_DIR') or Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'greenfield'
-    return Path(folder) / 'attest.key'
+    return config_dir() / 'attest.key'
 
 
 def load_key():

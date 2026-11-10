@@ -9,7 +9,8 @@ from pathlib import Path
 import re
 import shlex
 
-LEDGER_NAME = "experiment-ledger.jsonl"
+from gf_ledger import LEDGER_NAME, config_dir
+
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
 FILE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 READ_TOOLS = {"Read", "Grep", "Glob"}
@@ -23,10 +24,6 @@ SEGMENT = re.compile(r"(?:^|/)(?:materials/raw(?:/|$)|receipts/|(?:experiment-le
 RAW_GLOB = re.compile(r"(?:^|/)materials/+(?:raw(?:/|$)|[*?\[{])|\*\*/raw(?:/|$)")
 FOLDER_WORDS = (".config/greenfield", "attest.key", "GF_CONFIG_DIR", "GF_ATTEST_KEY_FILE")
 HUMAN = "Attestations are human-only. Run this yourself in your own terminal"
-
-
-def config_dir():
-    return Path(os.environ.get("GF_CONFIG_DIR") or Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "greenfield")
 
 
 def _real(p, base="."):

@@ -110,6 +110,8 @@ class DashboardBrowserTest(unittest.TestCase):
         page, errors = self.open()
         self.assertEqual(page.text_content("#vword"), "Validate before build")
         self.assertEqual(page.locator("#pillars tr").count(), 8)
+        self.assertEqual(page.locator("#pbar [data-p]").count(), 8)  # the score split by pillar
+        self.assertIn("Next: test 1 of 3.", page.text_content("#mapbox"))
         self.assertTrue(page.is_hidden("#banner"))
         self.assertTrue(page.is_visible("#demoTag"))
         texts = page.evaluate("[document.body.innerText, ...[...document.querySelectorAll('option')].map(o => o.textContent)]")

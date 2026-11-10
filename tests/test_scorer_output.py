@@ -86,7 +86,7 @@ class FieldTests(unittest.TestCase):
         data = sample()
         data["pillars"]["economics"]["evidence"] = 0
         self.assert_fields(scored(data), "VALIDATE_BEFORE_BUILD",
-                           "Evidence is thin on economics and problem: test these before building",
+                           "No customer test yet on any of the 5 core questions: test them before building",
                            "Run the waitlist from a cold list test to see whether the problem is real and enough buyers exist: add it with `greenfield plan --add-experiments`, then record the result, pass or fail, with `greenfield evidence add`.")
         data["experiments"] = [{"id": "X1", "pillars": ["economics"], "hypothesis": "Ten HR leads pay $50 for a benchmark"}]
         self.assertEqual(scored(data)["next_step"],

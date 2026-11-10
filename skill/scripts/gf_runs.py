@@ -80,6 +80,7 @@ def complete(project,run_id,role,artifact):
     if not art.is_file():raise ValueError('Completed artifact must be an existing file inside project')
     hash_=digest(art)
     def update(doc):
+        if doc is None:raise ValueError('No plan: run `greenfield task plan` first')
         task=doc['tasks'][role]
         if task['status']!='running':raise ValueError('Task must be claimed before completion')
         task.update(status='completed',artifact=str(art.relative_to(project)),sha256=hash_,completed_at=dt.datetime.now(dt.timezone.utc).isoformat())
@@ -92,6 +93,7 @@ def complete(project,run_id,role,artifact):
 def fail(project,run_id,role,reason):
     if role not in ROLES:raise ValueError('Unknown role')
     def update(doc):
+        if doc is None:raise ValueError('No plan: run `greenfield task plan` first')
         task=doc['tasks'][role]
         if task['status'] not in ('running','queued'):raise ValueError('Task cannot be failed from current state')
         task.update(status='failed',note=str(reason)[:150])
@@ -174,8 +176,8 @@ def status(project,run_id,rate=None):
     doc=load(project,run_id)
     state=current_state(project,run_id)
     tokens=state['stats']['reported_tokens']
-    usd_rate=rate if rate is not None else doc.get('cost_rate_usd_per_million_tokens')
-    cost=round(tokens/1_000_000*usd_rate,6) if usd_rate is not None and tokens>0 else None
+    # one cost figure: the dashboard's, unless a what-if rate is passed
+    cost=state['stats']['estimated_cost_usd'] if rate is None else round(tokens/1_000_000*rate,4) if tokens>0 else None
     return {'run_id':run_id,'tasks':{r:t['status'] for r,t in doc['tasks'].items()},
             'task_completion':sum(t['status']=='completed' for t in doc['tasks'].values()),
             'coverage':doc.get('coverage',{}),'reported_tokens':tokens,'estimated_cost_usd':cost,

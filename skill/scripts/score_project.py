@@ -27,6 +27,9 @@ CORE = ("problem", "market", "value", "economics", "distribution")
 PLAIN = {"problem": "the problem is real", "market": "enough buyers exist", "value": "people want your solution",
          "economics": "people will pay enough", "distribution": "you can reach buyers affordably",
          "competition": "you can beat the alternatives", "execution": "you can deliver it", "timing": "the timing is right"}
+ASK = {"problem": "Is the problem real?", "market": "Do enough buyers exist?", "value": "Do people want your solution?",
+       "economics": "Will people pay enough?", "distribution": "Can you reach buyers affordably?",
+       "competition": "Can you beat the alternatives?", "execution": "Can you deliver it?", "timing": "Is the timing right?"}
 CLASSIFICATIONS = {"fact", "estimate", "inference", "assumption"}
 SEVERITIES = {"confirmed", "plausible", "resolved"}
 SUPPORTED_SCHEMA = "2.0"
@@ -594,8 +597,10 @@ def headline(result, data):
     elif result["failed_gates"]:
         text = f"{result['failed_gates'][0]} came back fail: change the plan and retest it, or stop or reframe"
     elif result["missing_core_behavior_evidence"]:
-        thin = sorted(result["missing_core_behavior_evidence"], key=lambda p: ev[p])[:2]
-        text = f"Evidence is thin on {names(thin)}: test {'these' if len(thin) > 1 else 'it'} before building"
+        thin = sorted(result["missing_core_behavior_evidence"], key=lambda p: ev[p])
+        # naming two of five equally untested pillars would single them out for no reason
+        text = (f"No customer test yet on {'any' if len(thin) == len(CORE) else len(thin)} of the {len(CORE)} core questions: test them before building" if len(thin) > 2
+                else f"Evidence is thin on {names(thin)}: test {'these' if len(thin) > 1 else 'it'} before building")
     elif any("ledger reattest" in w for w in result["warnings"]):
         text = "Ledger receipts are not confirmed on this machine: re-attest before a pilot"
     elif any(w.startswith("Legacy receipt") for w in result["warnings"]):
@@ -636,11 +641,13 @@ def plain(pillars):
     return "whether " + names(PLAIN.get(p, p) for p in pillars)
 
 
-def _experiment_step(nxt):
+def _experiment_step(nxt, demo=False):
     target = f"see {plain(nxt['pillars'])}" if nxt["pillars"] else f"close gate {nxt['gate']}"
     record = "record the result, pass or fail, with `greenfield evidence add`."
     if not nxt["id"]:
         return f"Record your {nxt['entry']} file to {target}: {record}"
+    if nxt["new"] and demo:  # the bundled demo is read-only
+        return f"Run the {nxt['title'].lower()} test to {target}: `greenfield plan` lists every step. This is sample data, so nothing is saved."
     if nxt["new"]:
         return f"Run the {nxt['title'].lower()} test to {target}: add it with `greenfield plan --add-experiments`, then {record}"
     long_form = f"Run your experiment \"{nxt['hypothesis']}\" to {target}, then {record}"
@@ -667,7 +674,7 @@ def next_step(result, data):
     nxt = result.get("next_experiment")
     if result["missing_core_behavior_evidence"]:
         if nxt:
-            return _experiment_step(nxt)
+            return _experiment_step(nxt, data.get('evaluation_id') in gf_materials.RESERVED_IDS)
         p = min(result["missing_core_behavior_evidence"], key=lambda p: result["evidence_scores"][p])
         return f"Test {p} with real customers, then record the result, pass or fail, with `greenfield evidence add`."
     if any("ledger reattest" in w for w in result["warnings"]):
@@ -681,7 +688,7 @@ def next_step(result, data):
     if _to_assess(result):
         return f"Ask your assistant to re-assess {names(_to_assess(result))} from your new receipts and stamp them with `greenfield evidence assessed {' '.join(_to_assess(result))}`."
     if nxt:
-        return _experiment_step(nxt)
+        return _experiment_step(nxt, data.get('evaluation_id') in gf_materials.RESERVED_IDS)
     if result.get("findings_cap"):
         return STOP_STEP
     if result["missing_pilot_gates"]:
