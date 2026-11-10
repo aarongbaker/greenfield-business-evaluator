@@ -61,6 +61,23 @@ class DocTruthTests(unittest.TestCase):
                 with self.subTest(doc=doc.name, script=name):
                     self.assertTrue((SKILL / "scripts" / name).is_file())
 
+    def test_quoted_skill_paths_match_the_install_layout(self):  # W54
+        import sys
+        import tempfile
+        sys.path.insert(0, str(SKILL / "scripts"))
+        import gf_install
+        with tempfile.TemporaryDirectory() as t:
+            base, targets = gf_install.plan("both", "project", t, True)
+            dests = {dest.relative_to(base).as_posix() for dest, _ in targets}
+        for doc in DOCS:
+            for path in set(re.findall(r"\.(?:claude|agents)/skills/[A-Za-z0-9_./-]+", doc.read_text(encoding="utf-8"))):
+                if path.endswith("..."):
+                    continue
+                with self.subTest(doc=doc.name, path=path):
+                    dest = next((d for d in dests if path.startswith(d)), None)
+                    self.assertIsNotNone(dest, f"not an install location: {sorted(dests)}")
+                    self.assertTrue((SKILL / path[len(dest):].strip("/")).exists())
+
 
 if __name__ == "__main__":
     unittest.main()

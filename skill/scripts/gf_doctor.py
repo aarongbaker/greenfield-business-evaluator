@@ -57,7 +57,9 @@ def c_platform(ctx):
 def c_which(ctx):
     exe = shutil.which("greenfield")
     if not exe:
-        return [_r("environment.which", "Environment", "info", "no `greenfield` on PATH (running from a clone or by script path)")]
+        script = shlex.quote(str(Path(__file__).resolve().with_name("greenfield.py")))
+        return [_r("environment.which", "Environment", "info", "no `greenfield` on PATH (running from a clone or by script path)",
+                   f"Run `python3 {script}` wherever the docs say `greenfield`, or `pipx install git+https://github.com/aarongbaker/greenfield-business-evaluator`")]
     try:
         seen = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=5).stdout.strip()
     except (OSError, subprocess.SubprocessError):
@@ -244,7 +246,7 @@ def c_attestation(ctx):
            if legacy else _r("attestation.legacy_receipts", "Attestation", "pass", "no receipts with absolute paths")]
     kp = gf_ledger.key_path()
     if not gf_ledger.load_key():
-        out.append(_r("attestation.hmac_key", "Attestation", "warn", f"no signing key at {kp}", "It is created on your first `greenfield evidence add`"))
+        out.append(_r("attestation.hmac_key", "Attestation", "info", f"No signing key yet: it is created on your first sources check, evidence add or ledger record; back it up with the research folder ({kp})"))
     elif os.name == "posix" and stat.S_IMODE(kp.stat().st_mode) & 0o077:
         out.append(_r("attestation.hmac_key", "Attestation", "fail", f"{kp} is readable by others", f"chmod 600 {shlex.quote(str(kp))}"))
     else:

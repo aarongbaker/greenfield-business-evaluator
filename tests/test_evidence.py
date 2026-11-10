@@ -60,6 +60,19 @@ class Base(unittest.TestCase):
 
 
 class AddTests(Base):
+    def test_docs_example_matches_a_recorded_receipt(self):  # W53: docs/evidence.md shows what evidence add writes
+        import re
+        doc = (Path(__file__).resolve().parent.parent / "docs" / "evidence.md").read_text()
+        shown = json.loads(re.search(r"```json\n(.*?)```", doc, re.S).group(1))
+        self.start()
+        self.assertEqual(self.add(self.csv(), "--pillar", "value", "--pillar", "economics", "--gate", "pricing_test", "--experiment", "EXP-2",
+                                  "--outcome", "4 of 30 paid $49")[0], 0)
+        d = self.data()
+        got = d["pillars"]["value"]["behaviors"][0]
+        self.assertEqual(set(got), set(shown["behaviors"][0]))
+        self.assertEqual((got["kind"], got["description"], d["pillars"]["value"]["evidence"]), (shown["behaviors"][0]["kind"], "4 of 30 paid $49", 4))
+        self.assertEqual(set(d["pilot_gates"]["pricing_test"]), set(next(iter(shown["pilot_gates"].values()))))
+
     def test_presale_links_pillars_and_gate_and_leaves_quality(self):
         self.start()
         before = self.data()["pillars"]["value"]["quality"]

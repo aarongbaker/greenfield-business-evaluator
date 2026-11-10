@@ -127,7 +127,7 @@ Start a research run for an idea (refuses while another run is active).
 | `--new` | replace the active run if it is still running |
 | `--research-dir DIR` | research folder this run produces, inside the project |
 | `--slug SLUG` | folder name under research/greenfield/ (default: made from the idea) |
-| `--model MODEL` | business-model profile (default: general) (one of: bootstrapped_saas, general, marketplace, regulated, services, venture_startup) |
+| `--model MODEL` | business-model profile (default: general; asked on a terminal) (one of: bootstrapped_saas, general, marketplace, regulated, services, venture_startup) |
 | `--customer CUSTOMER` | initial customer, if known |
 | `--geography GEOGRAPHY` | where the customer is, if known |
 | `--depth DEPTH` | research depth (default: standard) (one of: quick, standard, deep) |

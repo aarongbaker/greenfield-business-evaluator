@@ -76,6 +76,11 @@ class Rows(DoctorCase):
         self.assertEqual((code, d["summary"]["exit_code"]), (3, 3))
         self.assertIn("WSL", next(c for c in d["checks"] if c["id"] == "environment.platform")["fix"])
 
+    def test_no_greenfield_on_path_prints_the_script_path(self):  # W54
+        r = self.checks()["environment.which"]
+        self.assertEqual(r["status"], "info")
+        self.assertIn(str(ROOT / "skill" / "scripts" / "greenfield.py"), r["fix"])
+
     def test_shadowing_binary_with_other_version(self):
         done = subprocess.CompletedProcess([], 0, stdout="greenfield 0.0.1\n")
         with mock.patch("shutil.which", return_value="/x/greenfield"), mock.patch("subprocess.run", return_value=done):
@@ -202,7 +207,9 @@ class Rows(DoctorCase):
         self.assertIn("evidence add", r["fix"])
 
     def test_hmac_key_missing_then_loose_then_ok(self):
-        self.assertEqual(self.status("attestation.hmac_key"), "warn")
+        r = self.checks()["attestation.hmac_key"]
+        self.assertEqual(r["status"], "info")  # W54: a fresh install has no key yet, and that is fine
+        self.assertIn("back it up with the research folder", r["detail"])
         path, _ = gf_ledger.ensure_key()
         self.assertEqual(self.status("attestation.hmac_key"), "pass")
         path.chmod(0o644)

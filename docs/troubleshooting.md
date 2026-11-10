@@ -42,6 +42,7 @@ Can report: warn, info, pass.
 Fix:
 
 - `pipx upgrade greenfield-evaluator` (or: greenfield install --force)
+- Run `python3 <...>` wherever the docs say `greenfield`, or `pipx install git+https://github.com/aarongbaker/greenfield-business-evaluator`
 
 ## Install
 
@@ -177,11 +178,10 @@ Fix:
 
 Whether the local key that signs human attestations exists and is private.
 
-Can report: warn, fail, pass.
+Can report: info, fail, pass.
 
 Fix:
 
-- It is created on your first `greenfield evidence add`
 - `chmod 600 <...>`
 
 ## Run
