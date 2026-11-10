@@ -111,6 +111,9 @@ class DashboardBrowserTest(unittest.TestCase):
         self.assertEqual(page.text_content("#vword"), "Validate before build")
         self.assertEqual(page.locator("#pillars tr").count(), 8)
         self.assertEqual(page.locator("#pbar [data-p]").count(), 8)  # the score split by pillar
+        self.assertEqual(page.locator("#graph .node").count(), 11)  # orchestrator, 8 specialists, red team, verdict
+        self.assertTrue(page.is_visible('#graph [data-agent="gf-redteam"]'))
+        self.assertTrue(page.is_hidden("#lanebox"))
         self.assertIn("Next: test 1 of 3.", page.text_content("#mapbox"))
         self.assertTrue(page.is_hidden("#banner"))
         self.assertTrue(page.is_visible("#demoTag"))
@@ -123,7 +126,7 @@ class DashboardBrowserTest(unittest.TestCase):
         page, _ = self.open()
         statuses = []
         page.on("response", lambda r: "/api/state" in r.url and statuses.append(r.status))
-        page.focus('[data-agent="gf-market"]')
+        page.focus('#graph [data-agent="gf-market"]')  # the graph is the default view
         page.evaluate("window._row = document.activeElement; document.getElementById('feed').scrollTop = 400")
         page.wait_for_timeout(300)
         page.evaluate(f"window._first = ({FIRST_VISIBLE})()")
@@ -197,13 +200,20 @@ class DashboardBrowserTest(unittest.TestCase):
         self.assertEqual(page.text_content("#vword"), "Validate before build")
         self.assertTrue(page.text_content("#runKind").startswith("completed"))
         wait(page, "document.getElementById('connText').textContent.startsWith('finished')", timeout=5000)
-        self.assertEqual(page.get_attribute('[data-agent="gf-market"] .g', "title"), "Done")
-        self.assertNotIn("Running", page.locator('[data-agent="gf-market"]').inner_text())
+        self.assertEqual(page.get_attribute('#graph [data-agent="gf-market"] .g', "title"), "Done")
+        # a finished run folds the panel to one line; the timeline behind it is still drawn
+        self.assertTrue(page.text_content("#laneDoneText").startswith("Research finished in "))
+        self.assertTrue(page.is_hidden("#graph"))
+        page.click("#laneToggle")
+        page.click('#viewSw [data-v="timeline"]')
+        self.assertTrue(page.is_visible('#agents [data-agent="gf-market"]'))
+        self.assertEqual(page.get_attribute('#agents [data-agent="gf-market"] .g', "title"), "Done")
+        self.assertNotIn("Running", page.locator('#agents [data-agent="gf-market"]').inner_text())
         # frozen timeline: the running agent's bar ends exactly where the last event (run_completed) sits on the scale
         s = json.load(urllib.request.urlopen(f"{self.url}api/state?run={self.big}"))
         t0, t1 = (dt.datetime.fromisoformat(s["run_window"][k]).timestamp() for k in ("start", "end"))
         want = (t1 - t0) / max(5, t1 - t0) * 100
-        got = page.evaluate("(() => { const f = document.querySelector('[data-agent=\"gf-market\"] .span'); return parseFloat(f.style.left) + parseFloat(f.style.width) })()")
+        got = page.evaluate("(() => { const f = document.querySelector('#agents [data-agent=\"gf-market\"] .span'); return parseFloat(f.style.left) + parseFloat(f.style.width) })()")
         self.assertAlmostEqual(got, want, delta=0.1)
         self.assertEqual(s["run_window"]["end"], s["events"][0]["timestamp"])
 
