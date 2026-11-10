@@ -20,11 +20,20 @@ Versioning rules:
 - `evidence_ledger` and `verification_report` must be `experiment-ledger.jsonl` and `source-verification.json` beside `evaluation.json`.
 - `greenfield install` and `install.py` add the guard hook by default (`--no-guard` opts out); it now also covers intake commands, signed files and `materials/raw/`.
 - Source reviews bind to their claim's signed entry in `source-verification.json`, so re-running `sources check` voids only reviews whose entry changed.
+- Receipts sign `confirm_via`; one confirmed by code rather than at a terminal, or a ledger shorter than an earlier score saw, blocks Proceed.
+- A fatal blocker leaves only through `resolved` with `resolved_by` ids; deleting it or setting `fatal: false` without them is an error.
+- `ledger reattest` touches only this evaluation's events and adopts pre-wave events only in a run that `evidence init` marked legacy, asking for `--as` and `--result`.
+- `greenfield report` recomputes the score and refuses a `decision.json` that disagrees.
+- Plain `greenfield demo` no longer makes itself the active run when any real run exists.
 
 ### Added
 
 - `greenfield evidence` (`init`, `add`, `link`, `redact`, `status`, `types`, `assessed`, `experiment add`) for bringing your own materials, with a PII scan and a preview before you sign.
 - `greenfield ledger reidea` carries receipts across a typo-sized edit of the idea.
+- `greenfield plan` finds the cheapest receipts that reach 75, 90 or 100 with Proceed (`--add-experiments` writes them in); score names the next experiment and stops with "stop or reframe" when findings, not missing evidence, hold the score.
+- Every score of a run prints a cumulative change log from `quality-history.jsonl`, and warns when a quality is above what its evidence supports.
+- `greenfield demo --proceed` scores a bundled worked example that reaches Proceed (DEMO data, valid only in its own folder).
+- Mission Control and DECISION.md show each receipt, each gate and the planner's route.
 - `profiles show` prints a `pilot_gates` block to paste; `start --model` pre-fills it.
 - `greenfield uninstall --scope all` removes both the project and user installs.
 - `greenfield report` warns on stderr, naming the lines, when it overwrites a hand-edited generated block.
