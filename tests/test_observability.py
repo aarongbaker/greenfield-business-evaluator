@@ -528,6 +528,46 @@ class DecisionTests(ServerMixin, unittest.TestCase):
         self.link()
         self.assertNotIn("progress", self.view())  # no verdict, no route, no line
 
+    def test_path_rooms_follow_the_outreach_folder(self):
+        import gf_plan
+        self.link()
+        self.ev.write_text(DEMO_EVAL.read_text())
+        test = lambda: next(n for n in self.view()["path"]["nodes"] if n["kind"] == "test")
+        self.assertTrue(test()["locked"])  # nothing to work through until the route's tests are in evaluation.json
+        self.assertEqual(self.view()["path"]["add"], "greenfield plan --add-experiments")
+        gf_plan.for_cli(self.ev, add=True)
+        first = test()
+        self.assertEqual(([r["key"] for r in first["rooms"]], [r["done"] for r in first["rooms"]], first["state"]),
+                         (["who", "say", "find", "send", "record"], [False] * 5, "next"))
+        self.assertEqual(first["meter"], {"hits": 0, "contacted": 0, "people": 300, "pass": 15, "unit": "sign-ups"})
+        self.assertIn(f"research/greenfield/x/outreach/{first['id']}/audience.md", first["rooms"][0]["prompt"])
+        out = self.folder / "outreach" / first["id"]
+        out.mkdir(parents=True)
+        (out / "audience.md").write_text("who")  # a new file shows on the next poll: it keys the cache
+        (out / "prospects.csv").write_text("id,name\nP1,a\nP2,b\n\n")
+        (out / "log.csv").write_bytes(b"\xff\xfe not a csv")
+        v = self.view()
+        rooms = {r["key"]: r for r in test()["rooms"]}
+        self.assertEqual([rooms[k]["done"] for k in ("who", "say", "find", "send")], [True, False, True, False])
+        self.assertEqual(rooms["find"]["count"], "2 of 300")
+        self.assertEqual(v["path"]["warnings"], ["log.csv could not be read"])
+        (out / "log.csv").write_text("id,sent_on,variant,replied,result\nP1,2026-01-05,A,yes,yes\nP2,2026-01-05,B,,\n")
+        first = test()
+        self.assertEqual((first["meter"]["hits"], first["meter"]["contacted"], first["rooms"][3]["count"]), (1, 2, "2 sent"))
+        (out / "log.csv").write_text("id,email\nP1,a@example.com\n")
+        self.assertEqual(self.view()["path"]["warnings"], ["log.csv needs the columns id, sent_on, variant, replied, result"])
+        self.assertEqual([n["kind"] for n in v["path"]["nodes"]], ["sources", "test", "test", "test", "score"])
+        self.assertTrue(all(o["command"].startswith("greenfield plan --add-experiments --route ") for o in v["path"]["others"]))
+
+    def test_demo_path_shows_sample_rooms_and_no_write_commands(self):
+        demo = observe.new_run(self.root, "demo idea", "demo", demo=True)
+        p = observe.decision_view(self.root, demo)["path"]
+        first = next(n for n in p["nodes"] if n["kind"] == "test")
+        self.assertEqual([r["done"] for r in first["rooms"]], [True, True, True, False, False])
+        self.assertEqual(first["rooms"][2]["count"], "12 of 300")
+        self.assertIsNone(p["add"])
+        self.assertTrue(all(o["command"] is None for o in p["others"]))
+
     def test_next_step_commands_reference_existing_paths(self):
         import shlex
         demo = observe.new_run(self.root, "demo idea", "demo", demo=True)

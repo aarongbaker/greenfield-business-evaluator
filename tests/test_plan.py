@@ -41,6 +41,18 @@ class Demo(unittest.TestCase):
         self.assertTrue(any(m.startswith("greenfield sources check") for m in out["manual"]))
         self.assertIn("Cheapest route to 75", gf_plan.render(out))
 
+    def test_route_option_writes_that_route_and_it_becomes_the_plan(self):
+        from gf_common import GFError
+        second = gf_plan.for_cli(self.ev)["routes"][1]
+        out = gf_plan.for_cli(self.ev, add=True, route=2)
+        self.assertEqual(sorted(out["added_experiments"]), sorted(s["experiment_id"] for s in second["steps"]))
+        rows = {x["id"]: x for x in json.loads(self.ev.read_text())["experiments"]}
+        self.assertEqual([rows[s["experiment_id"]]["method"] for s in second["steps"]], [s["title"] for s in second["steps"]])
+        now = gf_plan.for_cli(self.ev)["routes"][0]  # the route the founder set up is the one the plan and the score follow
+        self.assertEqual([(s["entry"], s["pillars"], s["new_experiment"]) for s in now["steps"]], [(s["entry"], s["pillars"], False) for s in second["steps"]])
+        with self.assertRaises(GFError):
+            gf_plan.for_cli(self.ev, add=True, route=0)
+
     def test_no_source_step_once_a_report_exists(self):
         (self.dir / "source-verification.json").write_text('{"claims": []}')
         data = json.loads(self.ev.read_text())

@@ -630,6 +630,7 @@ The cheapest receipts that reach a target score with Proceed (writes nothing unl
 | `--profile PROFILE` | what-if: plan under another profile without editing the file (one of: bootstrapped_saas, general, marketplace, regulated, services, venture_startup) |
 | `--top TOP` | how many routes to show (default 3) |
 | `--add-experiments` | write the top route's new experiments into evaluation.json |
+| `--route N` | with --add-experiments: write route N of the plan instead of the first |
 
 ```text
 greenfield plan
