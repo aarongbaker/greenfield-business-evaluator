@@ -20,4 +20,6 @@ As of 2026-10-23 · Profile: general · Research: live web, single-agent fallbac
 | Timing | 5 | ████░ 4 | █░░░░ 1 | Not evaluated (gap) |  |
 
 **What would change this verdict:** Resolve blocker R1
+
+How much to trust this verdict: see "How much to trust Proceed" in the greenfield README and SECURITY.md.
 <!-- greenfield:generated end -->

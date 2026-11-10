@@ -20,4 +20,11 @@ As of 2026-10-23 · Profile: general · Research: live web, single-agent fallbac
 | Timing | 5 | ████░ 4 | █░░░░ 1 | Not evaluated (gap) |  |
 
 **What would change this verdict:** evidence 3: problem, market, value, economics, distribution; problem quality 4 has no receipt; market quality 4 has no receipt; value quality 4 has no receipt; economics quality 4 has no receipt; distribution quality 4 has no receipt; competition quality 4 has no receipt; execution quality 4 has no receipt; timing quality 4 has no receipt
+
+**Cheapest route to 76:** 3 receipts · signups, signups, analytics · 14 days, $0 (run `greenfield plan`)
+1. Waitlist from a cold list for problem, market
+2. Waitlist from a cold list for value
+3. Product usage analytics for economics, distribution, competition
+
+How much to trust this verdict: see "How much to trust Proceed" in the greenfield README and SECURITY.md.
 <!-- greenfield:generated end -->

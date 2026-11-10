@@ -70,6 +70,8 @@ section{padding:16px;min-width:0}
 .map.bet-on .ghost{opacity:1}
 .missing{margin:8px 0 0;color:var(--fg-2)}
 .missing b{color:var(--fg);font-weight:600}
+.gates,#plan{overflow-wrap:anywhere}.gates{list-style:none;margin:6px 0 0;padding:0;font-family:var(--mono);font-size:12px;color:var(--fg-2)}.gates .ok{color:var(--ok)}.gates .bad{color:var(--bad)}
+.rc.t-warn{color:var(--warn)}.rc{overflow-wrap:anywhere;white-space:normal;font-size:12px;color:var(--fg-2);font-family:var(--mono)}.rc .bad{color:var(--bad)}
 .attn{margin-top:6px;color:var(--fg-2);font-size:12px}
 .attn summary{cursor:pointer}
 .attn ul{margin:4px 0 0;padding-left:18px}
@@ -206,6 +208,7 @@ th.r .hint .tip{left:auto;right:-8px}
 <div id="vstats" class="vstats"></div>
 <div class="map" id="mapbox"><svg id="map" viewBox="0 0 340 236" role="img" aria-label="Quality against proof for each pillar"></svg></div>
 <p id="missing" class="missing"></p>
+<ul id="gates" class="gates"></ul><p id="plan" class="missing"></p>
 <details id="attn" class="attn" hidden><summary id="attnSum"></summary><ul id="attnList"></ul></details>
 <div class="betbox" id="betbox"><div class="lbl" id="betLbl">Next bet</div><div id="nextBet"></div><div id="betWhy" class="betwhy"></div><div id="betStep" class="betstep"></div>
 <div class="cmd"><span class="p">$</span><code id="nextCmd" tabindex="0" title="Show the whole command"></code><button type="button" class="iconbtn" data-copy>copy</button></div></div>
@@ -393,7 +396,7 @@ function patchPillars(){
   setHTML(box,v.pillars.map(p=>{const a=ag(p),[g,gc]=a?glyph(a):['',''],e=p.evidence,q=p.quality,c=cov[p.key];
     const meter=Array.from({length:5},(_,i)=>`<i class="${q!=null&&i<q?'on':''}"></i>`).join(''),lad=[1,2].map(n=>`<i class="res ${n<=e?'on':''}"></i>`).join('')+'<span class="cut"></span>'+[3,4,5].map(n=>`<i class="beh ${n<=e?'on':''}"></i>`).join('');
     return `<tr data-p="${esc(p.key)}" tabindex="0" class="${p.core?'':'side'}${store.hover===p.key?' hi':''}" aria-label="${esc(p.name)}: quality ${q==null?'not assessed':q+' of 5'}, proof E${e}">
-<td>${esc(p.name)}</td><td class="r num dim hide-sm">${p.weight}%</td><td title="${q==null?'Not assessed':'Quality '+q+' of 5'}"><span class="meter${q==null?' na':''}" aria-hidden="true">${meter}</span><span class="num dim">${q==null?'–':q}</span></td>
+<td>${esc(p.name)}${p.over?`<div class="rc t-warn" title="${esc(p.over)}">Q${q} &gt; E${e}</div>`:''}${(p.receipts||[]).map(r=>`<div class="rc"><span class="${r.intact?'':'bad'}" title="${r.intact?'file intact':'file changed or missing'}">${r.intact?'✓':'✕'}</span> ${esc(r.id)} ${esc(r.material)} ${esc(r.result)}${r.threshold?' vs '+esc(r.threshold):''}${r.outcome?' · '+esc(r.outcome):''} · ${esc(r.date)}${r.reused_from.length?' · reused from '+esc(r.reused_from.join(', ')):''}</div>`).join('')}</td><td class="r num dim hide-sm">${p.weight}%</td><td title="${q==null?'Not assessed':'Quality '+q+' of 5'}"><span class="meter${q==null?' na':''}" aria-hidden="true">${meter}</span><span class="num dim">${q==null?'–':q}</span></td>
 <td title="E${e} · ${PROOF[e]}"><span class="ladder" aria-hidden="true">${lad}</span><span class="num dim">E${e}</span></td>
 <td class="r num dim hide-sm" title="${c?esc(plural(c.sourced_claims,'sourced claim')+' · '+plural(c.excerpt_located,'excerpt')+' located'):''}">${a&&a.sources||''}</td><td class="r"><span class="g ${gc}" title="${esc(a?a.display.label:'')}">${g}</span></td></tr>`}).join(''));
   const total=s?s.stats.source_events:0,doms=new Set(Object.values(store.marks).flat().filter(m=>m.k==='src').map(m=>m.label));
@@ -461,7 +464,9 @@ function renderDecision(v){
   if(!ok){const E=EMPTY[v&&v.state]||EMPTY.invalid;setText($('decEmptyTitle'),E[0]);setText($('decEmptyText'),E[1]);setHTML($('decErrors'),((v&&v.errors)||[]).map(e=>`<li>${esc(e)}</li>`).join(''));const ns=(v&&v.next_step)||{};setText($('decEmptyStep'),ns.text||'');setText($('decEmptyCmd'),ns.command||'');show($('decEmptyCopy'),!!ns.command);patchPillars();return}
   const vd=v.verdict,sc=v.scores,tone='t-'+(vd.tone||'neutral');
   setText($('vword'),vd.label);setCls($('vword'),'vword '+tone);setAttr($('vword'),'title',vd.meaning);
-  setText($('vhead'),vd.headline);setAttr($('vhead'),'title',vd.reason||'');
+  setText($('vhead'),vd.headline);setAttr($('vhead'),'title',vd.reason||'');setCls($('vhead'),'vhead'+(/stop or reframe/.test(vd.headline)?' t-warn':''));
+  setHTML($('gates'),(v.gates||[]).map(g=>`<li class="${g.closed?'ok':g.text.includes('cannot close')?'bad':''}">${g.closed?'☑':'☐'} ${esc(g.text)}</li>`).join('')+(v.carried?'<li>receipts carried across an idea change</li>':''));
+  setHTML($('plan'),v.plan?`${esc(v.plan.text)} · <code>${esc(v.plan.command)}</code>`:'');
   setHTML($('vstats'),`quality <b>${sc.weighted_quality==null?'–':sc.weighted_quality}</b>/100 · proof <b>E${Number(sc.evidence_average).toFixed(1)}</b> · <b>${sc.fatal_blockers}</b> ${sc.fatal_blockers===1?'blocker':'blockers'}${sc.profile&&sc.profile!=='general'?' · '+esc(sc.profile):''}`);
   if(sc.weighted_quality!=null&&store.trail[store.trail.length-1]!==sc.weighted_quality)store.trail.push(sc.weighted_quality);
   renderMap(v,tone);renderGap(v);

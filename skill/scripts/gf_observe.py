@@ -523,17 +523,49 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
         step = result["next_step"]
     warnings = summarize_warnings(result["warnings"])
     gap = verdict_gap(result)
+    matrix = _matrix(data, folder, result)
     return {"state": "ok", "research_dir": rd, "demo": bool(meta.get("demo")), "project": safe_text(result["project"], 120),
             "verdict": {"decision": d, **VERDICTS[d], "headline": result["headline"], "reason": result["reason"]},
             "verdicts": VERDICTS,
             "scores": {"weighted_quality": result["weighted_quality_0_to_100"], "evidence_average": result["evidence_average_0_to_5"],
                        "profile": result["business_model_profile"], "fatal_blockers": len(result["confirmed_fatal_blockers"])},
-            "pillars": [{"key": r.pillar, "name": r.display, "weight": result["pillar_weights"][r.pillar], "quality": qs[r.pillar], "evidence": es[r.pillar], "core": r.pillar in CORE} for r in SPECIALISTS],
+            "pillars": [{"key": r.pillar, "name": r.display, "weight": result["pillar_weights"][r.pillar], "quality": qs[r.pillar], "evidence": es[r.pillar], "core": r.pillar in CORE,
+                         **matrix["pillars"][r.pillar]} for r in SPECIALISTS],
+            "gates": matrix["gates"], "plan": matrix["plan"], "carried": matrix["carried"],
             "attention": {"confirmed_fatal": result["confirmed_fatal_blockers"], "plausible_fatal": result["unresolved_plausible_fatal_blockers"],
                           "missing_pilot_gates": result["missing_pilot_gates"], "source_review_open": result["source_review_pending"],
                           "warnings": [safe_text(w, 200) for w in warnings[:10]], "warning_count": len(result["warnings"])},
             "gap": gap, "gap_text": gap_text(gap), "next_bet": bet, "next_step": {"text": step, "command": rescore},
             "stored": stored, "stale": stale, "errors": []}, extra
+
+
+def _matrix(data, folder, result):
+    """W51: each pillar's receipts and rubric flag, one line per profile gate, and the planner's route line."""
+    import gf_ledger, gf_materials
+    from gf_profiles import BASE, GATE_HELP, PROFILES
+    with gf_ledger.demo_scope(folder):
+        facts = gf_materials.analyze(data, folder / gf_ledger.LEDGER_NAME, folder)
+    t = lambda v, n=80: safe_text(v, n) if isinstance(v, str) else ""
+    goal = {x.get("id"): x.get("success_threshold") for x in data.get("experiments") or [] if isinstance(x, dict)}  # older receipts did not sign it
+    row = lambda e: {"id": t(e["id"], 20), "material": t(e.get("material") or e["kind"], 20), "kind": t(e["kind"], 20), "result": t(e.get("result"), 10),
+                     "threshold": t(e.get("success_threshold") or goal.get(e.get("experiment_id"))), "outcome": t(e.get("outcome"), 120), "date": t(e.get("observed_at"), 10),
+                     "reused_from": [t(x, 60) for x in e.get("reused_from") or []], "intact": e["id"] in facts["intact"]}
+    over = {p: w for w in result["warnings"] for p in BASE if w.startswith(f"pillars.{p}: quality") and "above what evidence" in w}
+    pillars = {p: {"receipts": [row(e) for e in facts["counted"] if p in e["pillar_ids"]], "over": t(over.get(p), 200) or None} for p in BASE}
+    gates = []
+    for g in PROFILES.get(result["business_model_profile"], PROFILES["general"])["pilot_gates"]:
+        tried = [e for e in facts["counted"] if g in (e.get("gate_ids") or [])]
+        last = tried[-1] if tried else None
+        if g not in result["missing_pilot_gates"]:
+            ids = (data.get("pilot_gates") or {}).get(g, {}).get("evidence_ids") or []
+            gates.append({"gate": g, "closed": True, "text": f"{g} · {t(', '.join(map(str, ids)), 60)} pass"})
+        elif last and last.get("result") == "fail":
+            gates.append({"gate": g, "closed": False, "text": f"{g} · {t(last['id'], 20)} fail (cannot close)"})
+        else:
+            gates.append({"gate": g, "closed": False, "text": f"{g} · needs {' or '.join(sorted(GATE_HELP[g]['accepts']))}"})
+    route = result.get("route")
+    plan = {"text": f"To {route['total']:g}: {route['receipts']} receipts · {', '.join(s['as'] for s in route['steps'])}", "command": "greenfield plan"} if route else None
+    return {"pillars": pillars, "gates": gates, "plan": plan, "carried": "receipts carried across an idea change" in result["warnings"]}
 
 
 def evidence_view(project, run_id, pillar):
