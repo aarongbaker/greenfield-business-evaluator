@@ -22,7 +22,7 @@ To reach Proceed: evidence 3: problem, market, value, economics, distribution;
   quality 4 has no receipt; economics quality 4 has no receipt; distribution
   quality 4 has no receipt; competition quality 4 has no receipt; execution
   quality 4 has no receipt; timing quality 4 has no receipt
-Next: Add EXP-1 (Waitlist from a cold list) for problem and market with
-      greenfield plan --add-experiments, run it, record it with greenfield
-      evidence add, then re-score.
+Next: Run the waitlist from a cold list test to see whether the problem is real
+      and enough buyers exist: add it with `greenfield plan --add-experiments`,
+      then record the result, pass or fail, with `greenfield evidence add`.
 Heuristic triage, not a probability of commercial success.

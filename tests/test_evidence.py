@@ -60,6 +60,13 @@ class Base(unittest.TestCase):
 
 
 class AddTests(Base):
+    def test_dates_are_not_phone_numbers(self):
+        f = self.root / "w.csv"
+        f.write_text("signed_up,amount\n2026-11-01,49\n2026-11-02 10:30,49\n")
+        self.assertEqual(gf_materials.pii_found(f), [])
+        f.write_text("signed_up,contact\n2026-11-01,+1 (415) 555-0134\n")
+        self.assertEqual(gf_materials.pii_found(f), ["phones"])
+
     def test_docs_example_matches_a_recorded_receipt(self):  # W53: docs/evidence.md shows what evidence add writes
         import re
         doc = (Path(__file__).resolve().parent.parent / "docs" / "evidence.md").read_text()

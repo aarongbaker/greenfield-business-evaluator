@@ -476,6 +476,19 @@ class DecisionTests(ServerMixin, unittest.TestCase):
     def view(self):
         return observe.decision_view(self.root, self.rid)
 
+    def test_steps_are_the_planner_route_for_a_founder(self):
+        demo = observe.new_run(self.root, "demo idea", "demo", demo=True)
+        v = observe.decision_view(self.root, demo)
+        steps = v["steps"]
+        self.assertTrue(steps[0].startswith("**Waitlist from a cold list** (shows whether the problem is real and enough buyers exist). Email 300 people"), steps[0])
+        self.assertIn("It passes if at least 15 of the 300 sign up (5%).", steps[0])
+        self.assertIn("Repeat the test above with 300 different people", steps[1])
+        self.assertFalse(any(w in " ".join(steps) for w in ("EXP-", "receipt", "pillar")))
+        self.assertEqual(steps[-1], "When the results are in, run `greenfield score` to update this verdict.")
+        self.assertFalse(any("--add-experiments" in t for t in steps))  # the demo never writes into its bundled files
+        self.assertEqual(v["next_step"]["command"], "greenfield plan")
+        self.assertTrue(v["why"].startswith("To reach a Proceed verdict you need a passed customer test on each of the 5 core questions (0 done so far)"), v["why"])
+
     def test_next_step_commands_reference_existing_paths(self):
         import shlex
         demo = observe.new_run(self.root, "demo idea", "demo", demo=True)

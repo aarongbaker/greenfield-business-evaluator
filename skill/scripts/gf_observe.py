@@ -15,6 +15,7 @@ import json
 import os
 import random
 from pathlib import Path
+from collections import Counter
 import re
 import shlex
 import stat
@@ -444,6 +445,64 @@ def _research(project, run_id):
     return meta, base, folder
 
 
+def _command(result, rescore, demo):
+    """The command for the first step: the bundled demo gets a read-only one, so it never shows a local path."""
+    if demo:
+        return "greenfield plan"
+    route = result.get("route")
+    return "greenfield plan --add-experiments" if route and any(s["new_experiment"] for s in route["steps"]) else rescore
+
+
+def _steps(result, step, demo=False):
+    """The founder's to-do list: the planner's route while one is open, else the scorer's single next step.
+    Written to procedure style: one action per step, goal first, no internal terms (pillar, receipt, gate ids)."""
+    from score_project import names, plain
+    route = result.get("route")
+    if result["decision"] != "VALIDATE_BEFORE_BUILD" or not route or step != result["next_step"]:
+        return [step]
+    import gf_plan
+    cat = {e["id"]: e for e in gf_plan.catalog()}
+    new = any(s["new_experiment"] for s in route["steps"]) and not demo  # never write into the bundled demo
+    out = ["Add the tests below to your project: run `greenfield plan --add-experiments`."] if new else []
+    seen = set()
+    for s in route["steps"]:
+        e = cat.get(s["entry"], {})
+        goal = " and ".join(x for x in (s["pillars"] and f"shows {plain(s['pillars'])}", s["gate"] and f"closes gate {s['gate']}") if x)
+        how = ("Repeat the test above with 300 different people, this time leading with what your product does for them."
+               if s["title"] in seen and s["entry"] == "signups" else e.get("how", ""))
+        seen.add(s["title"])
+        out.append(f"**{s['title']}** ({goal}). {how}" + (f" It passes if {e['pass_hint']}." if e.get("pass_hint") else ""))
+    out.append("After each test, record whether it passed or failed against the mark above, not a new one. "
+               "`greenfield plan` shows the exact commands, including how to remove emails first.")
+    qs = result["quality_scores"]
+    high = [p for p, q in route["quality_targets"].items() if qs.get(p) is not None and q < qs[p]]
+    if high:
+        them = "them" if len(high) > 1 else "it"
+        out.append(f"Your research scored {names(high)} above 3 out of 5 with no customer test behind {them}, which blocks a Proceed verdict. "
+                   f"Ask your assistant to lower {them} to 3, or test {them} too.")
+    if result["source_review_pending"]:
+        out.append("Check that the web pages your research cites say what it claims: run `greenfield sources check --allow-network`, "
+                   "then `greenfield evidence status`, and confirm each claim with the command it shows.")
+    covered = {s["gate"] for s in route["steps"]}
+    out += [f"Close pilot gate {g} with a passing test." for g in result["missing_pilot_gates"] if g not in covered]
+    out.append("When the results are in, run `greenfield score` to update this verdict.")
+    return out
+
+
+def _why(result):
+    """One line on what Proceed still needs, in counts a founder can check."""
+    if result["decision"] != "VALIDATE_BEFORE_BUILD":
+        return ""
+    from score_project import CORE
+    have = len(CORE) - len(result["missing_core_behavior_evidence"])
+    total, route = result["weighted_quality_0_to_100"], result.get("route")
+    parts = [f"a passed customer test on each of the {len(CORE)} core questions ({have} done so far)"]
+    if total is not None and total < 75:
+        parts.append(f"a score of 75 ({total:g} now)")
+    tail = f" The tests below get there in about {route['days']} days." if route else ""
+    return "To reach a Proceed verdict you need " + " and ".join(parts) + "." + tail
+
+
 def decision_view(project, run_id):
     """Verdict recomputed from evaluation.json (never read from decision.json), cached on input mtimes and sizes."""
     project = Path(project).expanduser().resolve()
@@ -535,7 +594,8 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
             "attention": {"confirmed_fatal": result["confirmed_fatal_blockers"], "plausible_fatal": result["unresolved_plausible_fatal_blockers"],
                           "missing_pilot_gates": result["missing_pilot_gates"], "source_review_open": result["source_review_pending"],
                           "warnings": [safe_text(w, 200) for w in warnings[:10]], "warning_count": len(result["warnings"])},
-            "gap": gap, "gap_text": gap_text(gap), "next_bet": bet, "next_step": {"text": step, "command": rescore},
+            "gap": gap, "gap_text": gap_text(gap), "next_bet": bet, "next_step": {"text": step, "command": _command(result, rescore, meta.get("demo"))},
+            "steps": _steps(result, step, meta.get("demo")), "why": _why(result),
             "stored": stored, "stale": stale, "errors": []}, extra
 
 
@@ -564,7 +624,9 @@ def _matrix(data, folder, result):
         else:
             gates.append({"gate": g, "closed": False, "text": f"{g} · needs {' or '.join(sorted(GATE_HELP[g]['accepts']))}"})
     route = result.get("route")
-    plan = {"text": f"To {route['total']:g}: {route['receipts']} receipts · {', '.join(s['as'] for s in route['steps'])}", "command": "greenfield plan"} if route else None
+    kinds = Counter(s["as"] for s in route["steps"]) if route else {}
+    each = ", ".join(k + (f" ×{n}" if n > 1 else "") for k, n in kinds.items())
+    plan = {"text": f"To {route['total']:g} with {route['receipts']} receipts: {each}", "command": "greenfield plan"} if route else None
     return {"pillars": pillars, "gates": gates, "plan": plan, "carried": "receipts carried across an idea change" in result["warnings"]}
 
 

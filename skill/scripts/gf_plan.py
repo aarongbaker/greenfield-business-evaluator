@@ -254,7 +254,7 @@ def _commands(steps, slug):
             s["bring"], s["redact"], path = f"{rel}/materials/inbox/{stem}{ext}", None, f"{rel}/materials/inbox/{stem}{ext}"
         s["command"] = " ".join([f"greenfield evidence add {path} --as {e['as']}", *(f"--pillar {p}" for p in s["pillars"]),
                                  *([f"--gate {s['gate']}"] if s.get("gate") else []), *([f"--experiment {s['experiment_id']}"] if s["experiment_id"] else []),
-                                 f"--result pass --consent {e['consent']} --attester \"<you>\"", *(["--redacted"] if binary else [])])
+                                 f"--result <pass|fail> --consent {e['consent']} --attester \"<you>\"", *(["--redacted"] if binary else [])])
 
 
 def _finish(route, st, gates, slug):

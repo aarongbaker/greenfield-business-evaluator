@@ -48,6 +48,12 @@ MAGIC = {".pdf": (b"%PDF",), ".png": (b"\x89PNG",), ".jpg": (b"\xff\xd8\xff",), 
          ".xlsx": (b"PK\x03\x04",), ".docx": (b"PK\x03\x04",)}
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 PHONE = re.compile(r"(?<![\w.])\+?\d[\d ().-]{8,}\d(?![\w.])")
+ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _is_phone(m):
+    """A PHONE match that is not a date: at least 9 digits and no leading YYYY-MM-DD."""
+    return sum(c.isdigit() for c in m.group()) >= 9 and not ISO_DATE.match(m.group())
 CARD = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
 PII_HEADERS = {"email", "e-mail", "name", "first_name", "last_name", "full_name", "phone", "address", "card", "ssn"}
 NAMES_WARNING = "names in free text were not checked; redact names by hand"
@@ -170,7 +176,7 @@ def pii_found(path):
     text, found = path.read_text(encoding="utf-8", errors="replace"), set()
     if EMAIL.search(text):
         found.add("emails")
-    if PHONE.search(text):
+    if any(_is_phone(m) for m in PHONE.finditer(text)):
         found.add("phones")
     if any(_luhn(re.sub(r"\D", "", m.group())) for m in CARD.finditer(text)):
         found.add("cards")
@@ -627,7 +633,8 @@ def redact(args):
         csv.writer(out, delimiter=delim, lineterminator="\n").writerows([[c for i, c in enumerate(r) if i not in drop] for r in rows])
         text, changed = out.getvalue(), True
     for mask in masks:
-        new = {"emails": EMAIL, "phones": PHONE, "cards": CARD}[mask].sub("[redacted]", text)
+        keep = _is_phone if mask == "phones" else (lambda m: True)
+        new = {"emails": EMAIL, "phones": PHONE, "cards": CARD}[mask].sub(lambda m: "[redacted]" if keep(m) else m.group(), text)
         changed |= new != text
         text = new
     if not changed:

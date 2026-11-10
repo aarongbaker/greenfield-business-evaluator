@@ -24,7 +24,7 @@ As of 2026-10-23 · Profile: general · Research: live web, single-agent fallbac
 **Cheapest route to 76:** 3 receipts · signups, signups, analytics · 14 days, $0 (run `greenfield plan`)
 1. Waitlist from a cold list for problem, market
 2. Waitlist from a cold list for value
-3. Product usage analytics for economics, distribution, competition
+3. Priced landing page for economics, distribution, competition
 
 How much to trust this verdict: see "How much to trust Proceed" in the greenfield README and SECURITY.md.
 <!-- greenfield:generated end -->

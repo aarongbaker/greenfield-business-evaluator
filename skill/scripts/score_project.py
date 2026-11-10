@@ -23,6 +23,10 @@ import gf_materials
 
 PILLAR_WEIGHTS = BASE
 CORE = ("problem", "market", "value", "economics", "distribution")
+# What each pillar asks, in a founder's words, for instructions.
+PLAIN = {"problem": "the problem is real", "market": "enough buyers exist", "value": "people want your solution",
+         "economics": "people will pay enough", "distribution": "you can reach buyers affordably",
+         "competition": "you can beat the alternatives", "execution": "you can deliver it", "timing": "the timing is right"}
 CLASSIFICATIONS = {"fact", "estimate", "inference", "assumption"}
 SEVERITIES = {"confirmed", "plausible", "resolved"}
 SUPPORTED_SCHEMA = "2.0"
@@ -627,15 +631,20 @@ def _to_assess(result):
 STOP_STEP = 'Your experiments ran and the findings stay below the bar; stop, or reframe with greenfield start --new --idea "<new framing>".'
 
 
+def plain(pillars):
+    """'whether the problem is real and enough buyers exist' for a list of pillars."""
+    return "whether " + names(PLAIN.get(p, p) for p in pillars)
+
+
 def _experiment_step(nxt):
-    target = f"for {names(nxt['pillars'])}" if nxt["pillars"] else f"for gate {nxt['gate']}"
+    target = f"see {plain(nxt['pillars'])}" if nxt["pillars"] else f"close gate {nxt['gate']}"
+    record = "record the result, pass or fail, with `greenfield evidence add`."
     if not nxt["id"]:
-        return f"Record a {nxt['entry']} receipt {target} with greenfield evidence add, then re-score."
+        return f"Record your {nxt['entry']} file to {target}: {record}"
     if nxt["new"]:
-        return f"Add {nxt['id']} ({nxt['title']}) {target} with greenfield plan --add-experiments, run it, record it with greenfield evidence add, then re-score."
-    short_form = f"Run {nxt['id']} {target}, record it with greenfield evidence add, then re-score."
-    long_form = f"Run {nxt['id']} {target} ({nxt['hypothesis']}), record it with greenfield evidence add, then re-score."
-    return long_form if len(long_form) <= 200 else short_form
+        return f"Run the {nxt['title'].lower()} test to {target}: add it with `greenfield plan --add-experiments`, then {record}"
+    long_form = f"Run your experiment \"{nxt['hypothesis']}\" to {target}, then {record}"
+    return long_form if len(long_form) <= 200 else f"Run your next planned experiment to {target}, then {record}"
 
 
 def next_step(result, data):
@@ -644,15 +653,13 @@ def next_step(result, data):
     if d == "NO_GO":
         return f"Do not build; revisit only if new sourced evidence resolves blocker {result['confirmed_fatal_blockers'][0]}."
     if d == "RESEARCH_INCOMPLETE":
-        todo = (["fill pillar quality scores"] if None in qs.values() else []) + \
-               ([] if result["web_research_performed"] else ["run live web research"])
-        return (" and ".join(todo) + ", then re-score.").capitalize()
+        return "Ask your assistant to finish the research, then run `greenfield score`."
     if d == "PIVOT":
-        return "Reframe the idea around the weak core pillar and evaluate it as a new evaluation.json."
+        return "Reframe the idea around its weakest core pillar and start a new run with `greenfield start --new --idea '<new framing>'`."
     if d == "PROCEED_TO_BOUNDED_PILOT":
         return "Run a bounded pilot against its pre-committed thresholds; do not scale yet."
     if result["unresolved_plausible_fatal_blockers"]:
-        return f"Confirm or resolve blocker {result['unresolved_plausible_fatal_blockers'][0]} with sourced evidence, then re-score."
+        return f"Investigate blocker {result['unresolved_plausible_fatal_blockers'][0]}: find a source that confirms or rules it out, then run `greenfield score`."
     if result["failed_core"]:
         return STOP_STEP
     if result["failed_gates"]:
@@ -662,7 +669,7 @@ def next_step(result, data):
         if nxt:
             return _experiment_step(nxt)
         p = min(result["missing_core_behavior_evidence"], key=lambda p: result["evidence_scores"][p])
-        return f"Test {p} with real customers, record it with `greenfield evidence add`, then re-score."
+        return f"Test {p} with real customers, then record the result, pass or fail, with `greenfield evidence add`."
     if any("ledger reattest" in w for w in result["warnings"]):
         return "Re-confirm your receipts with `greenfield ledger reattest`, then re-score."
     if any(w.startswith("Legacy receipt") for w in result["warnings"]):
@@ -672,16 +679,16 @@ def next_step(result, data):
     if result["injected_events"]:
         return f"Re-record {', '.join(result['injected_events'])} at a terminal with `greenfield evidence add`, then re-score."
     if _to_assess(result):
-        return f"Re-assess findings from your new receipts, run `greenfield evidence assessed {' '.join(_to_assess(result))}`, then re-score."
+        return f"Ask your assistant to re-assess {names(_to_assess(result))} from your new receipts and stamp them with `greenfield evidence assessed {' '.join(_to_assess(result))}`."
     if nxt:
         return _experiment_step(nxt)
     if result.get("findings_cap"):
         return STOP_STEP
     if result["missing_pilot_gates"]:
-        return f"Link reviewed evidence to pilot gate {result['missing_pilot_gates'][0]}, then re-score."
+        return f"Close pilot gate {result['missing_pilot_gates'][0]}: record a passing receipt for it with `greenfield evidence add --gate {result['missing_pilot_gates'][0]}`."
     if result["source_review_pending"]:
-        return "Run `greenfield sources check` on the cited sources and record a human source review, then re-score."
-    return "Run the experiment that tests the weakest core pillar, then re-score."
+        return "Check that the web pages your research cites say what it claims: run `greenfield sources check --allow-network`, then `greenfield evidence status`."
+    return "Run `greenfield plan` and start its first experiment."
 
 
 def verdict_gap(result):
@@ -718,7 +725,7 @@ def _verdict_gap(result, unraisable=()):
     out += [{"key": f"gate:{g}", "text": f"close gate {g}"} for g in result["missing_pilot_gates"]]
     if result["source_review_pending"]:
         n = sum(w.startswith("Unreviewed public source claim") for w in result["warnings"])
-        out.append({"key": "source_review", "text": f"review {n} source{'s' * (n != 1)}" if n else "verify sources and record a human review"})
+        out.append({"key": "source_review", "text": f"review {n} source{'s' * (n != 1)}" if n else "a human review of the sources"})
     if any("ledger reattest" in w for w in result["warnings"]):
         out.append({"key": "reattest", "text": "re-attest ledger receipts on this machine"})
     return out + result.get("receipt_gaps", [])
