@@ -104,9 +104,6 @@ def validate(data, base_dir=None):
     if version != SUPPORTED_SCHEMA:
         errors.append(f"schema_version must be {SUPPORTED_SCHEMA!r} (got {short(version)}); "
                       "migrate older evaluations per README before scoring")
-    # Always apply the strict (v2) receipt and source-review checks, so an
-    # absent or wrong version can never switch them off.
-    is_v2 = True
     base_dir = pathlib.Path(base_dir or ".").resolve()
     # Resolve data paths once, confined to the evaluation folder; every later use reads these two variables.
     paths = {}
@@ -144,7 +141,7 @@ def validate(data, base_dir=None):
     if not member(profile, PROFILES):
         errors.append('project.business_model must be one of: ' + ', '.join(sorted(PROFILES)))
         profile = 'general'
-    if is_v2 and not isinstance(data.get('pilot_gates', {}), dict):
+    if not isinstance(data.get('pilot_gates', {}), dict):
         errors.append('pilot_gates must be an object')
     if data.get("as_of") == "":  # the template's "not started" marker (W24): incomplete, not invalid
         warnings.append("Not started: set as_of to today's date and replace any REPLACE_ project fields")
@@ -261,7 +258,7 @@ def validate(data, base_dir=None):
             errors.append(f"pillars.{p}: evidence {e} is above what its receipts support ({facts['best'][p]})")
         if type(e) is int and e >= 3 and not signed_for(p) and not any(isinstance(b, dict) and b.get("verified") is True and nonempty_str(b.get("source_or_artifact")) for b in behaviors):
             errors.append(f"pillars.{p}: evidence >=3 requires a verified documented observed behavior")
-        if is_v2 and type(e) is int and e >= 3:
+        if type(e) is int and e >= 3:
             ledger_name = data.get('evidence_ledger')
             if not path_str(ledger_name):
                 errors.append(f"pillars.{p}: v2 evidence >=3 requires evidence_ledger path")
@@ -313,7 +310,7 @@ def validate(data, base_dir=None):
                     errors.append(f"market_model.{name} range must be nonnegative finite numbers")
                 elif not vals[0] <= vals[1] <= vals[2]:
                     errors.append(f"market_model.{name}: require low <= base <= high")
-    if is_v2 and isinstance(data.get('pilot_gates', {}), dict):
+    if isinstance(data.get('pilot_gates', {}), dict):
         for gate in PROFILES[profile]['pilot_gates']:
             entry = data['pilot_gates'].get(gate)
             if entry is not None and (not isinstance(entry,dict) or type(entry.get('passed')) is not bool or not isinstance(entry.get('evidence_ids', []), list)):
@@ -322,7 +319,7 @@ def validate(data, base_dir=None):
         if data.get(key) not in (None, '') and not path_str(data.get(key)):
             errors.append(f'{key} must be a relative path string (got {short(data.get(key))})')
     review_map = {}
-    if is_v2 and report_path and ledger_path:
+    if report_path and ledger_path:
         try:
             review_map = reviewed_claims(ledger_path,report_path)
         # Malformed report/ledger FILE contents only; evaluation data is checked outside this try.
@@ -335,7 +332,7 @@ def validate(data, base_dir=None):
             if isinstance(claim,dict) and claim.get('classification')=='fact' and claim.get('source_url') and member(claim.get('id'),referenced) and review_map.get(claim['id'])!='supported':
                 warnings.append('Unreviewed public source claim: '+claim['id'])
     closed = {}
-    if is_v2 and isinstance(data.get('pilot_gates',{}),dict):
+    if isinstance(data.get('pilot_gates',{}),dict):
         for gate in PROFILES[profile]['pilot_gates']:
             entry=data.get('pilot_gates',{}).get(gate)
             if isinstance(entry,dict) and entry.get('passed') is True:

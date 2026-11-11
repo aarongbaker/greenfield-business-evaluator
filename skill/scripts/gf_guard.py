@@ -4,6 +4,7 @@ Defense in depth only. The real locks are the TTY prompt and the HMAC key (W11);
 misses still cannot produce a valid signature.
 """
 from __future__ import annotations
+import glob
 import os
 from pathlib import Path
 import re
@@ -98,12 +99,28 @@ def _hit_files(argv, depth=0):
     return _touches_signed(argv)
 
 
+def _globs_protected(argv, project):
+    """True when a word, after ~, $VAR and glob expansion, names the key folder or a signed file (cat ~/.config/green*/att*)."""
+    if {os.path.basename(t) for t in argv[:2]} & GF_HEADS and EXEMPT.search(" ".join(argv)):
+        return False  # same read-only exemption as _touches_signed
+    keys = protected_paths(project)
+    for t in argv:
+        for part in t.split("="):
+            if not part or (not glob.has_magic(part) and "$" not in part and "~" not in part):
+                continue  # plain words are already checked by text
+            for m in glob.glob(os.path.join(str(project), os.path.expandvars(os.path.expanduser(part)))):
+                p = _real(m)
+                if _signed_path(p) or any(p == q or q in p.parents for q in keys):
+                    return True
+    return False
+
+
 def _deny_command(cmd, project):
     try:
         for seg in split_commands(cmd):
             if _hit(seg):
                 return f"{HUMAN}: {' '.join(seg)}"
-            if _hit_files(seg):
+            if _hit_files(seg) or _globs_protected(seg, project):
                 return FILES_DENIED
     except ValueError:
         if re.search(r"ledger|attester|greenfield|materials/raw|receipts/", cmd):

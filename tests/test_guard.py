@@ -71,6 +71,19 @@ class DecideTests(unittest.TestCase):
         self.assertIn("your own terminal", gf_guard.decide("Bash", {"command": DENY[0]}))
         self.assertIn(DENY[0].split(" --attester")[0], gf_guard.decide("Bash", {"command": DENY[0]}))
 
+    def test_globbed_key_and_ledger_paths_denied(self):
+        proj = Path(self.tmp.name)
+        self.cfg.mkdir()
+        (self.cfg / "attest.key").write_bytes(b"k")
+        run = proj / "research" / "x"
+        run.mkdir(parents=True)
+        (run / "evaluation.json").write_text("{}")
+        (run / "experiment-ledger.jsonl").write_text("")
+        for cmd in (f"cat {proj}/cf*/att*", "cat $GF_CONFIG_DIR/*", "cat research/*/experiment-led*"):
+            self.assertTrue(gf_guard.decide("Bash", {"command": cmd}, proj), cmd)
+        for cmd in ("ls research/*", "grep -r foo .", "greenfield ledger verify --ledger research/*/experiment-ledger.jsonl"):
+            self.assertIsNone(gf_guard.decide("Bash", {"command": cmd}, proj), cmd)
+
     def test_bash_allow_table(self):
         for cmd in ALLOW:
             self.assertIsNone(gf_guard.decide("Bash", {"command": cmd}, self.tmp.name), cmd)

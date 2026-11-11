@@ -19,6 +19,7 @@ from pathlib import Path
 from collections import Counter
 import re
 import shlex
+import shutil
 import stat
 import sys
 import threading
@@ -247,6 +248,8 @@ def scaffold(project, args):
     ev = folder / "evaluation.json"
     if ev.exists():
         raise GFError("evaluation.json already exists; not overwriting", path=ev, hint="pass --slug NAME, or run `greenfield status`")
+    fresh = not folder.exists()
+    history_existed = (folder / "quality-history.jsonl").exists()
     (folder / "specialists").mkdir(parents=True, exist_ok=True)
     folder = resolve_inside(project, folder)  # re-check after mkdir: a symlink must not have redirected it
     data = load_json(ASSETS / "evaluation-template.json")
@@ -262,7 +265,16 @@ def scaffold(project, args):
     gf_materials.setup_folders(folder)
     gf_materials.snapshot(folder, data)
     atomic_write_json(ev, data, mode=0o600)
-    rid = new_run(project, args.idea, args.provider, replace=args.new, research_dir=folder)
+    try:
+        rid = new_run(project, args.idea, args.provider, replace=args.new, research_dir=folder)
+    except BaseException:  # another start won the race: leave nothing that blocks a retry
+        if fresh:
+            shutil.rmtree(folder, ignore_errors=True)
+        else:
+            ev.unlink(missing_ok=True)
+            if not history_existed:
+                (folder / "quality-history.jsonl").unlink(missing_ok=True)
+        raise
     if not args.no_plan:
         import gf_runs
         gf_runs.plan(project, rid)
@@ -816,13 +828,15 @@ def ingest_codex(project, run_id, source):
             data = json.loads(line)
         except ValueError:
             continue
+        if not isinstance(data, dict):
+            continue
         event = data.get("type", "")
         if event == "thread.started":
             session = safe_text(data.get("thread_id", ""), 80)
             emit(project, run_id, "note", provider="codex-cli", summary="Codex CLI thread started", session_id=session)
             count += 1
         elif event in ("item.started", "item.completed", "item.failed"):
-            item = data.get("item") or {}
+            item = data.get("item") if isinstance(data.get("item"), dict) else {}
             t = item.get("type") or item.get("item_type") or "item"
             if t in ("reasoning", "agent_message", "assistant_message"):
                 continue
@@ -834,7 +848,7 @@ def ingest_codex(project, run_id, source):
             emit(project, run_id, mapped, provider="codex-cli", agent=name, session_id=session, tool=t, summary="Codex " + safe_text(t, 50) + " " + event.rsplit(".", 1)[-1])
             count += 1
         elif event == "turn.completed":
-            usage = data.get("usage") or {}
+            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
             tokens = int(usage.get("input_tokens", 0) or 0) + int(usage.get("output_tokens", 0) or 0)
             emit(project, run_id, "token_usage", provider="codex-cli", session_id=session, tokens=tokens, summary="Turn usage reported by Codex")
             count += 1

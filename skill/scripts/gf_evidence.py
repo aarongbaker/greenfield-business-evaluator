@@ -69,6 +69,17 @@ class PinnedHTTPSConnection(PinnedHTTPConnection):
             sock.close();raise
 
 
+_V4_IN_V6=(ipaddress.ip_network('64:ff9b::/96'),ipaddress.ip_network('::/96'))  # NAT64 and old IPv4-compatible forms
+
+
+def _embedded_v4(ip):
+    """The IPv4 address an IPv6 address carries (mapped, NAT64, IPv4-compatible), else ip itself."""
+    if ip.version==6:
+        if ip.ipv4_mapped:return ip.ipv4_mapped
+        if any(ip in n for n in _V4_IN_V6):return ipaddress.IPv4Address(int(ip)&0xFFFFFFFF)
+    return ip
+
+
 def _vet(url, resolver=None):
     value=urlsplit(url)
     if value.scheme not in ('https','http') or not value.hostname or value.username or value.password:
@@ -91,7 +102,7 @@ def _vet(url, resolver=None):
     ips=[]
     for addr in addrs:
         ip=ipaddress.ip_address(addr[4][0].split('%')[0])
-        if not ip.is_global:
+        if not ip.is_global or not _embedded_v4(ip).is_global:
             raise ValueError('Nonpublic network target blocked')
         if str(ip) not in ips:ips.append(str(ip))
     return hostname.lower(),port,value.scheme,ips
