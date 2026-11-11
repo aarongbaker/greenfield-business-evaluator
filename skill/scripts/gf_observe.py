@@ -40,6 +40,12 @@ DEMO_RESEARCH = "demo-research"  # bundled sample folder under ASSETS, labelled 
 PROVIDER_NAMES = {"claude": "Claude Code", "codex": "Codex", "both": "Claude Code + Codex"}  # demo/manual stay hidden
 
 
+def _shown_provider(provider, events):
+    """A run started for both hosts shows only the host whose hooks actually reported, once exactly one has."""
+    seen = {e.get("provider") for e in events} & {"claude", "codex"}
+    return seen.pop() if provider == "both" and len(seen) == 1 else provider
+
+
 def now():
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds")
 
@@ -422,7 +428,7 @@ def current_state(project, run_id, since=None):
         at = next((i for i in range(len(events) - 1, -1, -1) if events[i].get("id") == since), None)
         feed = {"events_delta": events[-300:][::-1] if at is None else events[at + 1:][-300:][::-1], "reset": at is None}
     return {"meta": meta, "status": status, "agents": list(agents.values()), **feed, "event_count": len(events), "checkpoints": task_info,
-            "rev": rev, "decision_etag": decision_etag, "provider_name": PROVIDER_NAMES.get(meta.get("provider"), ""),
+            "rev": rev, "decision_etag": decision_etag, "provider_name": PROVIDER_NAMES.get(_shown_provider(meta.get("provider"), events), ""),
             "hooks_off": not hooked and any(v in ("running", "completed") for v in tasks.values()),
             "run_window": {"start": meta.get("created_at"), "end": ends[-1] if ends else None},
             "roles": [{"id": r.claude_id, "name": r.display, "pillar": r.pillar} for r in _ROLES],
@@ -724,6 +730,8 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
                          **matrix["pillars"][r.pillar]} for r in SPECIALISTS],
             "gates": matrix["gates"], "plan": matrix["plan"], "progress": matrix["progress"], "carried": matrix["carried"],
             "attention": {"confirmed_fatal": result["confirmed_fatal_blockers"], "plausible_fatal": result["unresolved_plausible_fatal_blockers"],
+                          "open_blockers": [safe_text(f"{b.get('id')}: {b.get('finding', '')}", 240) for b in data.get("hard_blockers") or []
+                                            if isinstance(b, dict) and b.get("id") in result["unresolved_plausible_fatal_blockers"]],
                           "missing_pilot_gates": result["missing_pilot_gates"], "source_review_open": result["source_review_pending"],
                           "warnings": [safe_text(w, 200) for w in warnings[:10]], "warning_count": len(result["warnings"])},
             "gap": gap, "gap_text": gap_text(gap), "next_bet": bet, "next_step": {"text": step, "command": _command(result, rescore, meta.get("demo"))},
@@ -750,11 +758,11 @@ def _matrix(data, folder, result):
         last = tried[-1] if tried else None
         if g not in result["missing_pilot_gates"]:
             ids = (data.get("pilot_gates") or {}).get(g, {}).get("evidence_ids") or []
-            gates.append({"gate": g, "closed": True, "text": f"{g} · {t(', '.join(map(str, ids)), 60)} pass"})
+            gates.append({"gate": g, "closed": True, "text": f"{GATE_HELP[g]['description']} Passed: {t(', '.join(map(str, ids)), 60)}"})
         elif last and last.get("result") == "fail":
-            gates.append({"gate": g, "closed": False, "text": f"{g} · {t(last['id'], 20)} fail (cannot close)"})
+            gates.append({"gate": g, "closed": False, "text": f"{GATE_HELP[g]['description']} Test {t(last['id'], 20)} failed (cannot close)"})
         else:
-            gates.append({"gate": g, "closed": False, "text": f"{g} · needs {' or '.join(sorted(GATE_HELP[g]['accepts']))}"})
+            gates.append({"gate": g, "closed": False, "text": f"{GATE_HELP[g]['description']} Proof needed, e.g. {GATE_HELP[g]['example']}."})
     route = result.get("route")
     kinds = Counter(s["as"] for s in route["steps"]) if route else {}
     each = ", ".join(k + (f" ×{n}" if n > 1 else "") for k, n in kinds.items())

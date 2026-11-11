@@ -66,6 +66,12 @@ Fix:
 
 - `greenfield install --force`
 
+### `install.fresh`
+
+Whether each installed copy still matches the checkout it was installed from. A copy that falls behind serves an old dashboard and old instructions.
+
+Can report: warn, pass.
+
 ### `install.shadowing`
 
 Whether the skill is installed at both project and user scope with different versions. The host uses the project copy.

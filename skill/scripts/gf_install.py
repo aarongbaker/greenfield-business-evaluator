@@ -70,6 +70,7 @@ def write_manifest(skill_dest, agents, scope):
     atomic_write_json(skill_dest / MANIFEST, {
         "version": VERSION, "platform": "claude" if ".claude" in skill_dest.parts else "codex",
         "scope": scope, "installed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        "source": str(SKILL_SRC),  # lets doctor tell when the copy falls behind the checkout it came from
         "skill_files": files, "agents": {str(d): sha(d) for _, d in agents if d.is_file()}})
 
 

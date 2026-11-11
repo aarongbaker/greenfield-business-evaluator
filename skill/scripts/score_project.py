@@ -589,7 +589,8 @@ def headline(result, data):
     elif d == "PROCEED_TO_BOUNDED_PILOT":
         text = "All five core pillars clear the evidence gates: run a bounded pilot"
     elif result["unresolved_plausible_fatal_blockers"]:
-        text = "Plausible fatal blocker unresolved: " + ", ".join(result["unresolved_plausible_fatal_blockers"])
+        ids = result["unresolved_plausible_fatal_blockers"]
+        text = f"{'A possible deal-breaker' if len(ids) == 1 else str(len(ids)) + ' possible deal-breakers'} to rule out first: {names(ids)}"
     elif result["failed_core"]:
         text = f"A tested core assumption failed on {names(result['failed_core'])}: stop or reframe"
     elif result["failed_gates"]:

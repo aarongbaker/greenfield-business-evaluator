@@ -31,8 +31,10 @@ def path_for(project, platform):
 
 
 def script_for(project, platform):
-    base = project / (".claude" if platform == "claude" else ".agents") / "skills" / NAME
-    return base / "scripts" / "gf_observe.py"
+    """The project copy of the skill, else the personal (~) copy, so a user-scope install can still host the hooks."""
+    rel = Path(".claude" if platform == "claude" else ".agents") / "skills" / NAME / "scripts" / "gf_observe.py"
+    local = project / rel
+    return local if local.is_file() or not (Path.home() / rel).is_file() else Path.home() / rel
 
 
 def _ours(h):

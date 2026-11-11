@@ -2,6 +2,7 @@
 import contextlib
 import io
 import json
+import shutil
 import os
 import shlex
 import socket
@@ -96,6 +97,22 @@ class Rows(DoctorCase):
         self.install()
         (self.proj / ".claude/skills/greenfield-business-evaluator/SKILL.md").write_text("edited")
         self.assertEqual(self.status("install.intact"), "fail")
+
+    def test_copy_behind_its_checkout_warns(self):
+        self.install()
+        self.assertEqual(self.status("install.fresh"), "pass")
+        src = self.home / "clone" / "skill"
+        shutil.copytree(ROOT / "skill", src, ignore=shutil.ignore_patterns("__pycache__"))
+        (src.parent / "install.py").write_text("")
+        man_path = self.proj / ".claude/skills/greenfield-business-evaluator" / gf_install.MANIFEST
+        man = json.loads(man_path.read_text())
+        man_path.write_text(json.dumps({**man, "source": str(src)}))
+        self.assertEqual(self.status("install.fresh"), "pass")  # same files as the checkout
+        (src / "SKILL.md").write_text("newer")
+        r = self.checks()["install.fresh"]
+        self.assertEqual(r["status"], "warn")
+        self.assertIn("SKILL.md", r["detail"])
+        self.assertIn(str(src.parent / "install.py"), r["fix"])
 
     def test_missing_and_stale_agent_roles(self):
         self.install()

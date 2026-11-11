@@ -91,6 +91,19 @@ def c_install(ctx):
         out.append(_r("install.intact", "Install", "warn", f"no readable install manifest in {unknown[0]} (installed by an older version)", "greenfield install --force"))
     else:
         out.append(_r("install.intact", "Install", "pass", "files match the install manifest"))
+    behind = []
+    for scope, plat, skill, _ in found:
+        man = gf_install.read_manifest(skill) or {}
+        src = Path(man["source"]) if isinstance(man.get("source"), str) else None
+        if not src or not src.is_dir() or src.resolve() == Path(skill).resolve():
+            continue  # installed before sources were recorded, or the checkout is gone
+        now, then = gf_install.tree_hashes(src), man["skill_files"]
+        changed = [k for k in now if now[k] != then.get(k)] + [k for k in then if k not in now and k not in (".greenfield-version", gf_install.MANIFEST)]
+        if changed:
+            fix = f"python3 {src.parent / 'install.py'} --platform {plat} --scope {scope} --force" if (src.parent / "install.py").is_file() else "greenfield install --force"
+            behind.append((f"{scope}/{plat} copy is behind {src} ({len(changed)} file(s) changed since install, first: {changed[0]})", fix))
+    out.append(_r("install.fresh", "Install", "warn", behind[0][0], behind[0][1]) if behind else
+               _r("install.fresh", "Install", "pass", "installed copies match the checkouts they came from"))
     shadow = []
     for plat in ("claude", "codex"):
         v = {s: (d / ".greenfield-version").read_text().strip() if (d / ".greenfield-version").is_file() else "?"

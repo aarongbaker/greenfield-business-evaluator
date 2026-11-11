@@ -21,7 +21,8 @@ FILES_DENIED = "That path holds signed evidence or private materials, and agents
 GF_HEADS = {"greenfield", "greenfield.py", "cli.py"}
 # Read-only or tool-owned commands that legitimately name a signed file (skill/references/v2-workflows.md).
 EXEMPT = re.compile(r"\b(?:ledger\s+(?:verify|summary|record)|task\s+coverage|sources\s+check|score)\b")
-SEGMENT = re.compile(r"(?:^|/)(?:materials/raw(?:/|$)|receipts/|(?:experiment-ledger\.jsonl|quality-history\.jsonl|source-verification\.json)$)")
+# Bounded by non-path characters, not word ends, so a name inside inline code (python -c "open('x')") still matches.
+SEGMENT = re.compile(r"(?<![\w.-])(?:materials/raw(?![\w.-])|receipts/|(?:experiment-ledger\.jsonl|quality-history\.jsonl|source-verification\.json)(?![\w.-]))")
 RAW_GLOB = re.compile(r"(?:^|/)materials/+(?:raw(?:/|$)|[*?\[{])|\*\*/raw(?:/|$)")
 FOLDER_WORDS = (".config/greenfield", "attest.key", "GF_CONFIG_DIR", "GF_ATTEST_KEY_FILE")
 HUMAN = "Attestations are human-only. Run this yourself in your own terminal"

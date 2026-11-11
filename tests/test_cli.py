@@ -172,7 +172,16 @@ class ExitCodeTests(unittest.TestCase):
             ledger = Path(d) / "ledger.jsonl"
             ledger.write_text('{"seq": 1}\n')
             self.assertEqual(gf("ledger", "verify", "--ledger", str(ledger)).returncode, 1)
-            self.assertEqual(gf("--project", d, "hooks", "install").returncode, 3)  # skill not installed
+            bare = {**ENV, "HOME": d}  # no project copy and no personal copy
+            self.assertEqual(subprocess.run(GF + ["--project", d, "hooks", "install"], capture_output=True, env=bare, timeout=60).returncode, 3)
+            home = Path(d) / "home"
+            (home / ".claude/skills/greenfield-business-evaluator/scripts").mkdir(parents=True)
+            (home / ".claude/skills/greenfield-business-evaluator/scripts/gf_observe.py").write_text("")
+            proj = Path(d) / "proj"
+            proj.mkdir()
+            r = subprocess.run(GF + ["--project", str(proj), "hooks", "install", "--platform", "claude"], capture_output=True, text=True, env={**ENV, "HOME": str(home)}, timeout=60)
+            self.assertEqual(r.returncode, 0, r.stderr)  # a personal-scope install is enough to host the hooks
+            self.assertIn(str(home), (proj / ".claude/settings.local.json").read_text())
             for bad in (str(ledger), str(Path(d) / "missing")):
                 r = gf("--project", bad, "status")
                 self.assertEqual(r.returncode, 2)

@@ -37,6 +37,11 @@ DENY = [
     "cp x $GF_CONFIG_DIR/attest.key",
     "rm -rf ~/.config/greenfield",
     "bash -c 'unterminated greenfield ledger record --attester x",  # unparseable and mentions the ledger: fail closed
+    # inline code names a signed file inside one quoted token
+    "python3 -c \"import json;print(open('source-verification.json').read())\"",
+    "python3 -c \"open('research/x/experiment-ledger.jsonl','a').write('x')\"",
+    "node -e \"require('fs').readFileSync('materials/raw/w.csv')\"",
+    "python3 -c \"open('research/x/receipts/r.txt')\"",
 ]
 ALLOW = [
     "greenfield ledger verify --ledger l.jsonl",
@@ -51,6 +56,8 @@ ALLOW = [
     "ls -la && echo done",
     "bash -c 'greenfield ledger verify'",
     "echo 'unterminated",  # unparseable but never mentions the ledger: fail open
+    "python3 -c \"open('my-source-verification.json.bak')\"",  # a different file that only contains the name
+    "cat materials/rawdata.csv",
 ]
 
 

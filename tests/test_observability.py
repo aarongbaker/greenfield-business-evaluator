@@ -812,6 +812,8 @@ class LiveStateTests(ServerMixin, unittest.TestCase):
         self.assertTrue(s["meta"]["demo"])
         self.assertEqual(s["provider_name"], "")
         self.assertEqual(observe.current_state(self.root, self.rid)["provider_name"], "Claude Code + Codex")
+        self.assertEqual(observe._shown_provider("both", [{"provider": "claude"}, {"provider": "manual"}]), "claude")
+        self.assertEqual(observe._shown_provider("both", [{"provider": "claude"}, {"provider": "codex"}]), "both")
 
     def test_demo_snapshot_is_mid_run_and_backdated(self):
         rid = observe.demo_run(self.root)

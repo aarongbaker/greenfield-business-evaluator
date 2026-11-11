@@ -184,7 +184,7 @@ th.r .hint .tip{left:auto;right:-8px}
 .feed{position:absolute;inset:0;overflow-y:auto;overflow-anchor:none;font:13px/1.2 var(--sans);font-variant-numeric:tabular-nums;border-top:1px solid var(--line)}
 .row{display:grid;grid-template-columns:5em 7em 4.5em minmax(0,1fr);gap:10px;align-items:center;min-height:26px;padding:0 4px;white-space:nowrap}
 .row>span:last-child{white-space:normal;overflow-wrap:anywhere;padding:4px 0}
-.row .t{color:var(--fg-3)}.row .a{color:var(--fg-2)}
+.row .t{color:var(--fg-3)}.row .a{color:var(--fg-2)}.row .k{overflow:hidden;text-overflow:ellipsis}
 .k-search{color:var(--run)}.k-source,.k-done{color:var(--ok)}.k-failed,.k-warning{color:var(--bad)}.k-start,.k-run{color:var(--fg)}
 .row .x{color:var(--fg-3);margin-left:6px}
 .newpill{position:absolute;right:12px;bottom:10px;background:var(--raised);border:1px solid var(--line-2);border-radius:6px;padding:4px 10px;cursor:pointer;font:13px var(--sans);color:var(--run)}
@@ -248,7 +248,7 @@ th.r .hint .tip{left:auto;right:-8px}
 <p id="vhead" class="vhead"></p>
 <div id="vstats" class="vstats"></div>
 <div class="vgrid"><div class="check" id="mapbox"></div>
-<div class="vnote"><p id="missing" class="missing"></p>
+<div class="vnote"><ul id="blockers" class="gates" aria-label="Possible deal-breakers"></ul><p id="missing" class="missing"></p>
 <ul id="gates" class="gates"></ul>
 <details id="attn" class="attn" hidden><summary id="attnSum"></summary><ul id="attnList"></ul></details></div>
 <div class="betbox" id="betbox"><div class="lbl" id="betLbl">Next steps</div><ol id="steps" class="steps"></ol>
@@ -276,7 +276,7 @@ th.r .hint .tip{left:auto;right:-8px}
 <th><button class="hint" type="button">Pillar<span class="tip" role="tooltip"><b>Core pillars</b> (Problem, Market, Value, Economics, Distribution) decide the verdict: Proceed needs all five at quality 3+ with a recorded customer action or better. The other three are listed dimmer.</span></button></th>
 <th><button class="hint" type="button">Points<span class="tip" role="tooltip"><b>This pillar's share of the score.</b> A pillar can earn up to its weight under this run's business-model profile. It earns that weight times its quality (0 to 5, from the research) divided by 5. The points add up to the score out of 100.</span></button></th>
 <th><button class="hint" type="button">Backed by<span class="tip" role="tooltip"><b>What stands behind each score</b>, weakest to strongest, kept separate from quality: a great-looking pillar can still be unproven. The commands and docs call this the evidence level.
-<table><tbody><tr><td>0 belief</td><td>Nothing recorded: a hunch, a deck</td></tr><tr><td>1 talk</td><td>Interviews or surveys</td></tr><tr><td>2 desk</td><td>Sources a person has reviewed</td></tr><tr class="cutrow"><td>3 action</td><td>A customer signed up, booked or clicked</td></tr><tr><td>4 commit</td><td>Money or a signature: pre-sale, invoice, LOI</td></tr><tr><td>5 repeat</td><td>Repeat purchases or renewals</td></tr></tbody></table>
+<table><tbody><tr><td>0 belief</td><td>Nothing recorded: a hunch, a deck</td></tr><tr><td>1 talk</td><td>Interviews, surveys or background reading</td></tr><tr><td>2 desk</td><td>Sources a person has reviewed</td></tr><tr class="cutrow"><td>3 action</td><td>A customer signed up, booked or clicked</td></tr><tr><td>4 commit</td><td>Money or a signature: pre-sale, invoice, LOI</td></tr><tr><td>5 repeat</td><td>Repeat purchases or renewals</td></tr></tbody></table>
 Web research stops at 2. Steps 3 and above need a receipt recorded with <code>greenfield evidence add</code> and confirmed by a person.</span></button></th>
 <th class="r hide-sm"><button class="hint" type="button">Sources<span class="tip" role="tooltip">Sources the pillar's specialist recorded during this run. Open a pillar for its claims and their checks.</span></button></th>
 <th class="r"><span class="sr-only">Specialist status</span></th></tr></thead><tbody id="pillars"></tbody></table>
@@ -307,10 +307,10 @@ const setCls=(el,v)=>{if(el.className!==v)el.className=v};
 const show=(el,on)=>{if(el.hidden===!!on)el.hidden=!on};
 const setHTML=(el,h)=>{if(el._h!==h){el._h=h;el.innerHTML=h}};
 const FILTERS={all:()=>true,tools:t=>t==='tool_started'||t==='tool_failed',sources:t=>t==='source_seen',warn:t=>t==='warning'||/_failed$/.test(t)};
-const TOOLK={WebSearch:'search',WebFetch:'fetch',Read:'read',Grep:'grep',Glob:'glob'};
+const TOOLK={WebSearch:'search',WebFetch:'fetch',Read:'read',Grep:'grep',Glob:'glob',Bash:'shell',Write:'write',Edit:'edit',ToolSearch:'tools',SubagentHandback:'report'};
 const DOING={search:'searching the web',fetch:'reading a page',read:'reading a file',grep:'searching files',glob:'listing files'};
-const STAGE=['Not researched yet','Interviews only','Researched, not tested yet','Tested with customers','Paid or signed','Repeat buyers'];
-const PROOF=['nothing recorded','interviews or surveys','desk research','a recorded customer action','money or a signature','repeat purchases'],LVL=['belief','talk','desk','action','commit','repeat'];
+const STAGE=['Not researched yet','Interviews or reading only','Researched, not tested yet','Tested with customers','Paid or signed','Repeat buyers'];
+const PROOF=['nothing recorded','interviews or background reading','sources a person has checked','a recorded customer action','money or a signature','repeat purchases'],LVL=['belief','talk','desk','action','commit','repeat'];
 const GLYPH={Done:['✓','done'],Failed:['✕','fail'],Running:['●','run'],Claimed:['●','run'],Quiet:['◌','wait'],Stopped:['–','none'],Queued:['○','queued']};
 const EMPTY={no_research_dir:['No research folder linked','This run does not know which research folder it produces yet, so there is no verdict to show.'],no_evaluation:['No evaluation yet','The linked folder has no evaluation.json.'],invalid:["Can't score this evaluation",'evaluation.json has input errors, so no verdict is shown.'],invalid_path:['Research folder is outside this project','The linked path leaves the project folder, so it was not read.']};
 const store={run:null,rev:null,runsTag:null,runSig:'',lastId:null,state:null,dec:null,decEtag:undefined,decAt:0,verdict:null,trail:[],lastOk:0,errDelay:1500,failing:false,retryAt:0,timer:0,busy:false,
@@ -445,8 +445,8 @@ function paintLanes(){
   for(const b of $('viewSw').querySelectorAll('[data-v]'))setAttr(b,'aria-pressed',store.view===b.dataset.v);
   if($('gOut')){$('gOut').classList.toggle('hold',ready<s.agents.length-1);setText($('gHub'),s.status.charAt(0).toUpperCase()+s.status.slice(1));setText($('gVerdict'),store.dec&&store.dec.state==='ok'?store.dec.verdict.label:'Not scored yet')}
   show($('laneDone'),!!end);show($('laneBody'),!shut);show($('viewSw'),!shut);
-  if(end){const sites=new Set(Object.values(store.marks).flat().filter(m=>m.k==='src').map(m=>m.label)).size;
-    setText($('laneDoneText'),'Research '+(s.status==='completed'?'finished in ':'stopped after ')+dur(end-t0)+'. '+plural(s.stats.source_events,'source')+(sites?' from '+plural(sites,'site'):'')+'.');setText($('laneToggle'),shut?'Show details':'Hide details')}
+  if(end){const sites=new Set(Object.values(store.marks).flat().filter(m=>m.k==='src').map(m=>m.label)).size,cited=Object.values((s.checkpoints&&s.checkpoints.coverage)||{}).reduce((n,c)=>n+(c.sourced_claims||0),0);
+    setText($('laneDoneText'),'Research '+(s.status==='completed'?'finished in ':'stopped after ')+dur(end-t0)+'. '+(s.stats.source_events||!cited?plural(s.stats.source_events,'source')+(sites?' from '+plural(sites,'site'):''):plural(cited,'sourced claim'))+'.');setText($('laneToggle'),shut?'Show details':'Hide details')}
   setText($('laneMeta'),s.hooks_off?'no live signal':[done&&done+' done',run&&run+' running',queued&&queued+' queued',idle&&'quiet for '+((q=>q<3600000?Math.round(q/60000)+' min':Math.round(q/3600000)+' h')(Date.now()-last))].filter(Boolean).join(' · '));
   let lab='';for(let x=0;x<=len;x+=step)lab+=`<span style="left:${(x/len*100).toFixed(2)}%">${esc(dur(x).replace(/^00:/,'0:'))}</span>`;
   setHTML($('axis'),lab);
@@ -466,7 +466,7 @@ function patchPillars(){
     return `<tr data-p="${esc(p.key)}" tabindex="0" class="${p.core?'':'side'}${store.hover===p.key?' hi':''}" aria-label="${esc(p.name)}: ${said(p)}, backed by ${PROOF[e]}">
 <td>${esc(p.name)}<span class="ask hide-sm">${esc(p.ask||'')}</span>${p.over?`<div class="rc t-warn" title="${esc(p.over)}">Research suggests ${p.claimed}, but only ${p.points} count until a customer test passes</div>`:''}${(p.receipts||[]).map(r=>`<div class="rc"><span class="${r.intact?'':'bad'}" title="${r.intact?'file intact':'file changed or missing'}">${r.intact?'✓':'✕'}</span> ${esc(r.id)} ${esc(r.material)} ${esc(r.result)}${r.threshold?' vs '+esc(r.threshold):''}${r.outcome?' · '+esc(r.outcome):''} · ${esc(r.date)}${r.reused_from.length?' · reused from '+esc(r.reused_from.join(', ')):''}</div>`).join('')}</td><td title="${q==null?'Not assessed yet':'Quality '+q+' of 5, weight '+p.weight}"><span class="pts" style="width:${p.weight*5}px;margin-right:${8+Math.max(0,25-p.weight)*5}px" aria-hidden="true"><b style="width:${(p.points||0)/p.weight*100}%"></b></span><span class="num dim">${p.points==null?'not scored':p.points+' of '+p.weight}</span></td>
 <td>${PROOF[e][0].toUpperCase()+PROOF[e].slice(1)}<span class="ask">${e<5?'Stronger: '+PROOF[e+1]:'The strongest proof there is'}</span></td>
-<td class="r num dim hide-sm" title="${c?esc(plural(c.sourced_claims,'sourced claim')+' · '+plural(c.excerpt_located,'excerpt')+' located'):''}">${a&&a.sources||''}</td><td class="r"><span class="g ${gc}" title="${esc(a?a.display.label:'')}">${g}</span></td></tr>`}).join(''));
+<td class="r num dim hide-sm" title="${c?esc(plural(c.sourced_claims,'sourced claim')+' · '+plural(c.excerpt_located,'excerpt')+' located'):''}">${a&&a.sources||c&&c.sourced_claims||''}</td><td class="r"><span class="g ${gc}" title="${esc(a?a.display.label:'')}">${g}</span></td></tr>`}).join(''));
   const srcs=s?s.stats.source_events:0,doms=new Set(Object.values(store.marks).flat().filter(m=>m.k==='src').map(m=>m.label));
   setText($('mMeta'),srcs?plural(srcs,'source')+(doms.size?' · '+plural(doms.size,'domain'):''):'');
 }
@@ -495,6 +495,8 @@ function actionOf(e){
   if(ev==='agent_failed')return ['failed',e.summary];
   if(/^run_/.test(ev))return ['run',ev.slice(4)+(e.summary&&ev!=='run_started'?' · '+e.summary:'')];
   if(/^task_/.test(ev))return ['task',ev.slice(5)+(e.summary?' · '+e.summary:'')];
+  if(ev==='artifact_created')return ['file',e.summary||''];
+  if(ev==='token_usage')return ['tokens',e.summary||''];
   return [ev==='warning'?'warning':ev.replace(/_/g,' '),e.summary||''];
 }
 function paintGroup(g){
@@ -538,8 +540,9 @@ function renderDecision(v){
   const vd=v.verdict,sc=v.scores,tone='t-'+(vd.tone||'neutral');
   setText($('vword'),vd.label);setCls($('vword'),'vword '+tone);setAttr($('vword'),'title',vd.meaning);
   setText($('vhead'),vd.headline);setAttr($('vhead'),'title',vd.reason||'');setCls($('vhead'),'vhead'+(/stop or reframe/.test(vd.headline)?' t-warn':''));
+  setHTML($('blockers'),(v.attention.open_blockers||[]).map(b=>`<li class="bad">⚠ Possible deal-breaker ${esc(b)}</li>`).join(''));
   setHTML($('gates'),(v.gates||[]).map(g=>`<li class="${g.closed?'ok':g.text.includes('cannot close')?'bad':''}">${g.closed?'☑':'☐'} ${esc(g.text)}</li>`).join('')+(v.carried?'<li>receipts carried across an idea change</li>':''));
-  setHTML($('vstats'),`Score <b>${sc.weighted_quality==null?'–':sc.weighted_quality}</b> of 100 (75 needed to proceed). Proof so far: <b>${PROOF[Math.floor(sc.evidence_average)]}</b>. ${sc.fatal_blockers?`<b>${sc.fatal_blockers}</b> confirmed deal-breaker${sc.fatal_blockers===1?'':'s'}.`:'No deal-breakers.'}`);setAttr($('vstats'),'title',`Weighted quality ${sc.weighted_quality==null?'not scored':sc.weighted_quality+'/100'}, average proof level ${LVL[Math.floor(sc.evidence_average)]} (${Number(sc.evidence_average).toFixed(1)} of 5), ${sc.fatal_blockers} confirmed fatal ${sc.fatal_blockers===1?'blocker':'blockers'}, ${sc.profile||'general'} profile`);
+  setHTML($('vstats'),`Score <b>${sc.weighted_quality==null?'–':sc.weighted_quality}</b> of 100 (75 needed to proceed). Proof so far: <b>${PROOF[Math.floor(sc.evidence_average)]}</b>. ${sc.fatal_blockers?`<b>${sc.fatal_blockers}</b> confirmed deal-breaker${sc.fatal_blockers===1?'':'s'}.`:v.attention.plausible_fatal.length?`<b>${v.attention.plausible_fatal.length}</b> possible deal-breaker${v.attention.plausible_fatal.length===1?'':'s'} still open.`:'No deal-breakers.'}`);setAttr($('vstats'),'title',`Weighted quality ${sc.weighted_quality==null?'not scored':sc.weighted_quality+'/100'}, average proof level ${LVL[Math.floor(sc.evidence_average)]} (${Number(sc.evidence_average).toFixed(1)} of 5), ${sc.fatal_blockers} confirmed fatal ${sc.fatal_blockers===1?'blocker':'blockers'}, ${sc.profile||'general'} profile`);
   if(sc.weighted_quality!=null&&store.trail[store.trail.length-1]!==sc.weighted_quality)store.trail.push(sc.weighted_quality);
   renderCheck(v,tone);renderGap(v);
   const at=v.attention;show($('attn'),at.warning_count>0);
