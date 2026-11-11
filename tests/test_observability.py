@@ -1,3 +1,4 @@
+import argparse
 import contextlib
 import importlib.util
 import io
@@ -52,6 +53,11 @@ class ObserveTests(unittest.TestCase):
         observe.hook_event(self.root, "codex", {"hook_event_name": "SubagentStart", "agent_type": "gf_economics", "agent_id": "codex-agent"})
         state = observe.current_state(self.root, self.rid)
         self.assertEqual(next(a for a in state["agents"] if a["name"] == "gf-economics")["status"], "running")
+
+    def test_codex_non_object_lines_skipped(self):
+        lines = "\n".join(['5', '[]', '{"type":"item.started","item":"x"}', '{"type":"turn.completed","usage":[1]}',
+                           '{"type":"thread.started","thread_id":"t"}'])
+        self.assertEqual(observe.ingest_codex(self.root, self.rid, io.StringIO(lines)), 3)
 
     def test_codex_json_stream_sanitized(self):
         lines = "\n".join([
@@ -314,6 +320,14 @@ class ActiveRunTests(unittest.TestCase):
         [t.join() for t in ts]
         self.assertEqual(sum(isinstance(r, str) for r in results), 1)
         self.assertEqual(len(list((self.root / ".greenfield-observe" / "runs").iterdir())), 1)
+
+    def test_start_that_loses_the_race_leaves_no_folder(self):
+        lost = observe.ActiveRunError("other", "x", None)
+        args = argparse.Namespace(idea="race loser", as_of=None, new=False, slug=None, research_dir=None, model="general",
+                                  customer=None, geography=None, depth="standard", provider="both", no_plan=True)
+        with mock.patch.object(observe, "new_run", side_effect=lost), self.assertRaises(observe.ActiveRunError):
+            observe.scaffold(self.root, args)
+        self.assertFalse((self.root / "research" / "greenfield" / "race-loser").exists())
 
     def test_demo_never_displaces_real_run_or_hooks(self):
         real = observe.new_run(self.root, "real")
@@ -768,11 +782,11 @@ class LiveStateTests(ServerMixin, unittest.TestCase):
 
     def test_reconcile_matrix(self):
         rows = [("failed", None, "Failed", "Agent failed: boom"), ("running", "failed", "Failed", "Checkpoint failed"),
-                ("completed", "completed", "Done", "Checkpointed"), ("completed", "queued", "Done", "Not checkpointed"),
-                ("completed", "running", "Done", "Not checkpointed"), ("completed", None, "Done", ""),
+                ("completed", "completed", "Done", "Report saved"), ("completed", "queued", "Done", "Report not saved yet"),
+                ("completed", "running", "Done", "Report not saved yet"), ("completed", None, "Done", ""),
                 ("running", "completed", "Running", "boom"), ("quiet", "running", "Quiet", "No activity for 5 min; not a failure"),
                 ("queued", "running", "Claimed", "Claimed in checkpoints, no hook events yet"),
-                ("queued", "completed", "Done", "From checkpoint (reused or hooks off)"), ("queued", "queued", "Queued", ""), ("queued", None, "Queued", "")]
+                ("queued", "completed", "Done", "Report saved (not watched live)"), ("queued", "queued", "Queued", ""), ("queued", None, "Queued", "")]
         for status, task, label, note in rows:
             d = observe.reconcile({"name": "gf-market", "status": status, "activity": "boom"}, task)
             self.assertEqual((d["label"], d["note"]), (label, note), (status, task))
@@ -798,6 +812,8 @@ class LiveStateTests(ServerMixin, unittest.TestCase):
         self.assertTrue(s["meta"]["demo"])
         self.assertEqual(s["provider_name"], "")
         self.assertEqual(observe.current_state(self.root, self.rid)["provider_name"], "Claude Code + Codex")
+        self.assertEqual(observe._shown_provider("both", [{"provider": "claude"}, {"provider": "manual"}]), "claude")
+        self.assertEqual(observe._shown_provider("both", [{"provider": "claude"}, {"provider": "codex"}]), "both")
 
     def test_demo_snapshot_is_mid_run_and_backdated(self):
         rid = observe.demo_run(self.root)

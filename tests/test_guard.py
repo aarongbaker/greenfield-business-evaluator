@@ -37,6 +37,11 @@ DENY = [
     "cp x $GF_CONFIG_DIR/attest.key",
     "rm -rf ~/.config/greenfield",
     "bash -c 'unterminated greenfield ledger record --attester x",  # unparseable and mentions the ledger: fail closed
+    # inline code names a signed file inside one quoted token
+    "python3 -c \"import json;print(open('source-verification.json').read())\"",
+    "python3 -c \"open('research/x/experiment-ledger.jsonl','a').write('x')\"",
+    "node -e \"require('fs').readFileSync('materials/raw/w.csv')\"",
+    "python3 -c \"open('research/x/receipts/r.txt')\"",
 ]
 ALLOW = [
     "greenfield ledger verify --ledger l.jsonl",
@@ -51,6 +56,8 @@ ALLOW = [
     "ls -la && echo done",
     "bash -c 'greenfield ledger verify'",
     "echo 'unterminated",  # unparseable but never mentions the ledger: fail open
+    "python3 -c \"open('my-source-verification.json.bak')\"",  # a different file that only contains the name
+    "cat materials/rawdata.csv",
 ]
 
 
@@ -70,6 +77,19 @@ class DecideTests(unittest.TestCase):
             self.assertTrue(reason, cmd)
         self.assertIn("your own terminal", gf_guard.decide("Bash", {"command": DENY[0]}))
         self.assertIn(DENY[0].split(" --attester")[0], gf_guard.decide("Bash", {"command": DENY[0]}))
+
+    def test_globbed_key_and_ledger_paths_denied(self):
+        proj = Path(self.tmp.name)
+        self.cfg.mkdir()
+        (self.cfg / "attest.key").write_bytes(b"k")
+        run = proj / "research" / "x"
+        run.mkdir(parents=True)
+        (run / "evaluation.json").write_text("{}")
+        (run / "experiment-ledger.jsonl").write_text("")
+        for cmd in (f"cat {proj}/cf*/att*", "cat $GF_CONFIG_DIR/*", "cat research/*/experiment-led*"):
+            self.assertTrue(gf_guard.decide("Bash", {"command": cmd}, proj), cmd)
+        for cmd in ("ls research/*", "grep -r foo .", "greenfield ledger verify --ledger research/*/experiment-ledger.jsonl"):
+            self.assertIsNone(gf_guard.decide("Bash", {"command": cmd}, proj), cmd)
 
     def test_bash_allow_table(self):
         for cmd in ALLOW:

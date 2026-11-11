@@ -4,6 +4,7 @@ Defense in depth only. The real locks are the TTY prompt and the HMAC key (W11);
 misses still cannot produce a valid signature.
 """
 from __future__ import annotations
+import glob
 import os
 from pathlib import Path
 import re
@@ -20,7 +21,8 @@ FILES_DENIED = "That path holds signed evidence or private materials, and agents
 GF_HEADS = {"greenfield", "greenfield.py", "cli.py"}
 # Read-only or tool-owned commands that legitimately name a signed file (skill/references/v2-workflows.md).
 EXEMPT = re.compile(r"\b(?:ledger\s+(?:verify|summary|record)|task\s+coverage|sources\s+check|score)\b")
-SEGMENT = re.compile(r"(?:^|/)(?:materials/raw(?:/|$)|receipts/|(?:experiment-ledger\.jsonl|quality-history\.jsonl|source-verification\.json)$)")
+# Bounded by non-path characters, not word ends, so a name inside inline code (python -c "open('x')") still matches.
+SEGMENT = re.compile(r"(?<![\w.-])(?:materials/raw(?![\w.-])|receipts/|(?:experiment-ledger\.jsonl|quality-history\.jsonl|source-verification\.json)(?![\w.-]))")
 RAW_GLOB = re.compile(r"(?:^|/)materials/+(?:raw(?:/|$)|[*?\[{])|\*\*/raw(?:/|$)")
 FOLDER_WORDS = (".config/greenfield", "attest.key", "GF_CONFIG_DIR", "GF_ATTEST_KEY_FILE")
 HUMAN = "Attestations are human-only. Run this yourself in your own terminal"
@@ -98,12 +100,28 @@ def _hit_files(argv, depth=0):
     return _touches_signed(argv)
 
 
+def _globs_protected(argv, project):
+    """True when a word, after ~, $VAR and glob expansion, names the key folder or a signed file (cat ~/.config/green*/att*)."""
+    if {os.path.basename(t) for t in argv[:2]} & GF_HEADS and EXEMPT.search(" ".join(argv)):
+        return False  # same read-only exemption as _touches_signed
+    keys = protected_paths(project)
+    for t in argv:
+        for part in t.split("="):
+            if not part or (not glob.has_magic(part) and "$" not in part and "~" not in part):
+                continue  # plain words are already checked by text
+            for m in glob.glob(os.path.join(str(project), os.path.expandvars(os.path.expanduser(part)))):
+                p = _real(m)
+                if _signed_path(p) or any(p == q or q in p.parents for q in keys):
+                    return True
+    return False
+
+
 def _deny_command(cmd, project):
     try:
         for seg in split_commands(cmd):
             if _hit(seg):
                 return f"{HUMAN}: {' '.join(seg)}"
-            if _hit_files(seg):
+            if _hit_files(seg) or _globs_protected(seg, project):
                 return FILES_DENIED
     except ValueError:
         if re.search(r"ledger|attester|greenfield|materials/raw|receipts/", cmd):

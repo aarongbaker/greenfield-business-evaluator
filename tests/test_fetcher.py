@@ -51,6 +51,12 @@ class FetcherTests(unittest.TestCase):
         self.assertEqual(ev.check_public_url('https://[2606:4700::1111]/', resolver_for('2606:4700::1111'))[3], '2606:4700::1111')
         with self.assertRaises(ValueError): ev.check_public_url('http://example.com/', resolver_for(PUB, '10.0.0.1'))
 
+    def test_ipv6_wrapping_private_ipv4_blocked(self):
+        for wrapped in ('64:ff9b::a00:1', '64:ff9b::7f00:1', '::127.0.0.1', '::ffff:10.0.0.1'):
+            with self.assertRaisesRegex(ValueError, 'Nonpublic', msg=wrapped):
+                ev.check_public_url('https://example.com/', resolver_for(wrapped))
+        self.assertEqual(ev.check_public_url('https://example.com/', resolver_for('64:ff9b::808:808'))[3], '64:ff9b::808:808')  # NAT64 to 8.8.8.8 stays allowed
+
     def test_ports(self):
         with self.assertRaisesRegex(ValueError, 'Port 6379 not allowed'): ev.check_public_url('http://example.com:6379/', resolver_for(PUB))
         with self.assertRaisesRegex(ValueError, 'Port 443'): ev.check_public_url('http://example.com:443/', resolver_for(PUB))

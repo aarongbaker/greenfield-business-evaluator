@@ -14,6 +14,7 @@ from test_skill import attest, sample, scorer
 import gf_ledger
 import gf_materials
 import gf_observe
+import gf_profiles
 import gf_report
 from gf_common import GFError
 
@@ -94,9 +95,9 @@ class FailedGate(unittest.TestCase):
             rid = gf_observe.new_run(root, "reg", "claude", research_dir=base)
             v = gf_observe.decision_view(root, rid)
             gate = next(g for g in v["gates"] if g["gate"] == "compliance_path")
-            self.assertEqual(gate["text"], f"compliance_path · {e['id']} fail (cannot close)")
+            self.assertEqual(gate["text"], f"{gf_profiles.GATE_HELP['compliance_path']['description']} Test {e['id']} failed (cannot close)")
             other = next(g for g in v["gates"] if g["gate"] == "jurisdiction_review")
-            self.assertTrue(other["text"].startswith("jurisdiction_review · needs "))
+            self.assertEqual(other["text"], f"{gf_profiles.GATE_HELP['jurisdiction_review']['description']} Proof needed, e.g. {gf_profiles.GATE_HELP['jurisdiction_review']['example']}.")
             self.assertTrue(v["plan"]["text"].startswith("To 7"))
 
 

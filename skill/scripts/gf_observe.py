@@ -19,6 +19,7 @@ from pathlib import Path
 from collections import Counter
 import re
 import shlex
+import shutil
 import stat
 import sys
 import threading
@@ -37,6 +38,12 @@ DEFAULT_PATH = ".greenfield-observe"
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 DEMO_RESEARCH = "demo-research"  # bundled sample folder under ASSETS, labelled as sample data
 PROVIDER_NAMES = {"claude": "Claude Code", "codex": "Codex", "both": "Claude Code + Codex"}  # demo/manual stay hidden
+
+
+def _shown_provider(provider, events):
+    """A run started for both hosts shows only the host whose hooks actually reported, once exactly one has."""
+    seen = {e.get("provider") for e in events} & {"claude", "codex"}
+    return seen.pop() if provider == "both" and len(seen) == 1 else provider
 
 
 def now():
@@ -247,6 +254,8 @@ def scaffold(project, args):
     ev = folder / "evaluation.json"
     if ev.exists():
         raise GFError("evaluation.json already exists; not overwriting", path=ev, hint="pass --slug NAME, or run `greenfield status`")
+    fresh = not folder.exists()
+    history_existed = (folder / "quality-history.jsonl").exists()
     (folder / "specialists").mkdir(parents=True, exist_ok=True)
     folder = resolve_inside(project, folder)  # re-check after mkdir: a symlink must not have redirected it
     data = load_json(ASSETS / "evaluation-template.json")
@@ -262,7 +271,16 @@ def scaffold(project, args):
     gf_materials.setup_folders(folder)
     gf_materials.snapshot(folder, data)
     atomic_write_json(ev, data, mode=0o600)
-    rid = new_run(project, args.idea, args.provider, replace=args.new, research_dir=folder)
+    try:
+        rid = new_run(project, args.idea, args.provider, replace=args.new, research_dir=folder)
+    except BaseException:  # another start won the race: leave nothing that blocks a retry
+        if fresh:
+            shutil.rmtree(folder, ignore_errors=True)
+        else:
+            ev.unlink(missing_ok=True)
+            if not history_existed:
+                (folder / "quality-history.jsonl").unlink(missing_ok=True)
+        raise
     if not args.no_plan:
         import gf_runs
         gf_runs.plan(project, rid)
@@ -318,7 +336,7 @@ def reconcile(agent, task, run="running"):
     if s == "failed" or task == "failed":
         return d("Failed", "bad", f"Agent failed: {agent['activity']}" if s == "failed" else "Checkpoint failed", True)
     if s == "completed":
-        return d("Done", "good", *{"completed": ("Checkpointed",), "queued": ("Not checkpointed", True), "running": ("Not checkpointed", True)}.get(task, ()))
+        return d("Done", "good", *{"completed": ("Report saved",), "queued": ("Report not saved yet", True), "running": ("Report not saved yet", True)}.get(task, ()))
     if s in ("running", "quiet") and run != "running":  # a finished run cannot leave an agent Running
         return d("Done" if run == "completed" else "Stopped", "good" if run == "completed" else "neutral", f"Run {run}; no agent_completed event")
     if s == "running":
@@ -328,7 +346,7 @@ def reconcile(agent, task, run="running"):
     if task == "running":
         return d("Claimed", "accent", "Claimed in checkpoints, no hook events yet")
     if task == "completed":
-        return d("Done", "good", "From checkpoint (reused or hooks off)")
+        return d("Done", "good", "Report saved (not watched live)")
     return d("Queued", "neutral", "Waits for all 8 specialists" if agent["name"] == REDTEAM.claude_id else "")
 
 
@@ -410,7 +428,7 @@ def current_state(project, run_id, since=None):
         at = next((i for i in range(len(events) - 1, -1, -1) if events[i].get("id") == since), None)
         feed = {"events_delta": events[-300:][::-1] if at is None else events[at + 1:][-300:][::-1], "reset": at is None}
     return {"meta": meta, "status": status, "agents": list(agents.values()), **feed, "event_count": len(events), "checkpoints": task_info,
-            "rev": rev, "decision_etag": decision_etag, "provider_name": PROVIDER_NAMES.get(meta.get("provider"), ""),
+            "rev": rev, "decision_etag": decision_etag, "provider_name": PROVIDER_NAMES.get(_shown_provider(meta.get("provider"), events), ""),
             "hooks_off": not hooked and any(v in ("running", "completed") for v in tasks.values()),
             "run_window": {"start": meta.get("created_at"), "end": ends[-1] if ends else None},
             "roles": [{"id": r.claude_id, "name": r.display, "pillar": r.pillar} for r in _ROLES],
@@ -712,6 +730,8 @@ def _decide(project, run_id, meta, base, folder, ev, dec):
                          **matrix["pillars"][r.pillar]} for r in SPECIALISTS],
             "gates": matrix["gates"], "plan": matrix["plan"], "progress": matrix["progress"], "carried": matrix["carried"],
             "attention": {"confirmed_fatal": result["confirmed_fatal_blockers"], "plausible_fatal": result["unresolved_plausible_fatal_blockers"],
+                          "open_blockers": [safe_text(f"{b.get('id')}: {b.get('finding', '')}", 240) for b in data.get("hard_blockers") or []
+                                            if isinstance(b, dict) and b.get("id") in result["unresolved_plausible_fatal_blockers"]],
                           "missing_pilot_gates": result["missing_pilot_gates"], "source_review_open": result["source_review_pending"],
                           "warnings": [safe_text(w, 200) for w in warnings[:10]], "warning_count": len(result["warnings"])},
             "gap": gap, "gap_text": gap_text(gap), "next_bet": bet, "next_step": {"text": step, "command": _command(result, rescore, meta.get("demo"))},
@@ -738,11 +758,11 @@ def _matrix(data, folder, result):
         last = tried[-1] if tried else None
         if g not in result["missing_pilot_gates"]:
             ids = (data.get("pilot_gates") or {}).get(g, {}).get("evidence_ids") or []
-            gates.append({"gate": g, "closed": True, "text": f"{g} · {t(', '.join(map(str, ids)), 60)} pass"})
+            gates.append({"gate": g, "closed": True, "text": f"{GATE_HELP[g]['description']} Passed: {t(', '.join(map(str, ids)), 60)}"})
         elif last and last.get("result") == "fail":
-            gates.append({"gate": g, "closed": False, "text": f"{g} · {t(last['id'], 20)} fail (cannot close)"})
+            gates.append({"gate": g, "closed": False, "text": f"{GATE_HELP[g]['description']} Test {t(last['id'], 20)} failed (cannot close)"})
         else:
-            gates.append({"gate": g, "closed": False, "text": f"{g} · needs {' or '.join(sorted(GATE_HELP[g]['accepts']))}"})
+            gates.append({"gate": g, "closed": False, "text": f"{GATE_HELP[g]['description']} Proof needed, e.g. {GATE_HELP[g]['example']}."})
     route = result.get("route")
     kinds = Counter(s["as"] for s in route["steps"]) if route else {}
     each = ", ".join(k + (f" ×{n}" if n > 1 else "") for k, n in kinds.items())
@@ -816,13 +836,15 @@ def ingest_codex(project, run_id, source):
             data = json.loads(line)
         except ValueError:
             continue
+        if not isinstance(data, dict):
+            continue
         event = data.get("type", "")
         if event == "thread.started":
             session = safe_text(data.get("thread_id", ""), 80)
             emit(project, run_id, "note", provider="codex-cli", summary="Codex CLI thread started", session_id=session)
             count += 1
         elif event in ("item.started", "item.completed", "item.failed"):
-            item = data.get("item") or {}
+            item = data.get("item") if isinstance(data.get("item"), dict) else {}
             t = item.get("type") or item.get("item_type") or "item"
             if t in ("reasoning", "agent_message", "assistant_message"):
                 continue
@@ -834,7 +856,7 @@ def ingest_codex(project, run_id, source):
             emit(project, run_id, mapped, provider="codex-cli", agent=name, session_id=session, tool=t, summary="Codex " + safe_text(t, 50) + " " + event.rsplit(".", 1)[-1])
             count += 1
         elif event == "turn.completed":
-            usage = data.get("usage") or {}
+            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
             tokens = int(usage.get("input_tokens", 0) or 0) + int(usage.get("output_tokens", 0) or 0)
             emit(project, run_id, "token_usage", provider="codex-cli", session_id=session, tokens=tokens, summary="Turn usage reported by Codex")
             count += 1
