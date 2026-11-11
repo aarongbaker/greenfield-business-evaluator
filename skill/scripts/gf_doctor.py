@@ -279,6 +279,9 @@ def c_run(ctx):
     pii = gf_materials.inbox_warnings(ev.parent)
     if pii:
         out.append(_r("run.inbox_pii", "Run", "warn", f"{len(pii)} file(s) in materials/inbox/ hold personal data; first: {pii[0]}", "Run the greenfield evidence redact command it names"))
+    lists = sorted(ev.parent.glob("outreach/*/prospects.csv"))
+    if lists:
+        out.append(_r("run.prospects", "Privacy", "info", f"{len(lists)} prospect list(s) hold names and contact details, first: {lists[0]}", "Delete each file when its test is over"))
     return out
 
 

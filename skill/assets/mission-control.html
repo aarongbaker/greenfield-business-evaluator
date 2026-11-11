@@ -589,6 +589,7 @@ function renderPath(v){
       h+='<ol class="rooms">'+cur.rooms.map(r=>{const st=r.done?['✓','done','done']:r===live?['●','run','do this next']:['○','queued','to do'];
         return `<li><button type="button" class="room" data-room="${esc(r.key)}" aria-pressed="${r===sel}"${r===live?' aria-current="true"':''} aria-label="${esc(r.name+', '+st[2]+(r.count?', '+r.count:''))}"><span class="g ${st[1]}" aria-hidden="true">${st[0]}</span>${esc(r.name)}${r.count?` <span class="dim num">${esc(r.count)}</span>`:''}</button></li>`}).join('')+'</ol>';
       h+=`<div class="roombody"><p class="q">${esc(sel.ask)}</p><p>${esc(sel.help)}</p>${sel.prompt?`<div class="prompt"><p>${esc(sel.prompt)}</p><button type="button" class="iconbtn" data-copy>copy</button></div>`:''}${(sel.commands||[]).map(cmdBox).join('')}`;
+      if(sel.key==='say'||sel.key==='send')h+='<details class="attn"><summary>Rules for cold messages</summary><ul>'+p.rules.map(x=>`<li>${esc(x)}</li>`).join('')+'</ul></details>';
       if(sel.key==='send'&&m)h+=`<p><label class="pace">Messages a day (your call; start low)<input id="pace" type="number" min="1" max="500" value="${store.pace}" data-n="${m.people}"></label></p><p id="paceOut" class="dim">${esc(paceText(m.people))}</p>`;
       h+='</div>';
       if(m)h+=`<div class="sbar pm" aria-hidden="true"><b style="width:${Math.min(100,m.hits/m.pass*100)}%"></b></div><p class="dim">${m.hits} of ${m.pass} ${esc(m.unit)}, from ${m.contacted} contacted</p>`;

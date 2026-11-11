@@ -34,6 +34,12 @@ class SkillLint(unittest.TestCase):
         self.assertIn("materials/inbox/", text)
         self.assertIn("Never read `materials/raw/`", text)
 
+    def test_outreach_help_never_sends_or_records(self):  # W60
+        text = (SKILL / "references" / "outreach.md").read_text(encoding="utf-8")
+        for phrase in ("Never send a message", "Never write `log.csv`", "only when the founder asks", "id, name, role, company, source_url, contact", "id, sent_on, variant, replied, result"):
+            self.assertIn(phrase, text)
+        self.assertIn("references/outreach.md", (SKILL / "SKILL.md").read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

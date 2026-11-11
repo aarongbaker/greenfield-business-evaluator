@@ -38,6 +38,7 @@ MEANING = {
     "run.readiness": "Whether the active run's `evaluation.json` validates, so `greenfield score` can score it.",
     "run.ledger": "Whether the active run's experiment ledger hash chain is intact.",
     "run.inbox_pii": "Whether files in `materials/inbox/`, which the assistant may read, hold personal data.",
+    "run.prospects": "Prospect lists in `outreach/`, which hold names and contact details. Delete each one when its test is over.",
     "dashboard.port": "Whether the default dashboard port 8765 is free. Checked only with `--network`.",
     "network.reachability": "Whether this machine can open an HTTPS connection. Checked only with `--network`.",
     "agent.web_access": "Doctor cannot see whether your agent host has web browsing. Research without it ends as Research incomplete.",

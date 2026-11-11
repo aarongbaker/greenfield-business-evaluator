@@ -81,6 +81,10 @@ class DecideTests(unittest.TestCase):
             for target in ("research/x/experiment-ledger.jsonl", "sub/../research/experiment-ledger.jsonl", str(self.cfg / "attest.key")):
                 self.assertTrue(gf_guard.decide(tool, {key: target}, proj), (tool, target))
             self.assertIsNone(gf_guard.decide(tool, {key: "notes.md"}, proj))
+            # W60: the assistant drafts into outreach/, so the guard leaves it open; materials/raw/ stays closed to reads
+            self.assertIsNone(gf_guard.decide(tool, {key: "research/greenfield/x/outreach/EXP-1/prospects.csv"}, proj))
+        self.assertIsNone(gf_guard.decide("Read", {"file_path": "research/greenfield/x/outreach/EXP-1/prospects.csv"}, proj))
+        self.assertTrue(gf_guard.decide("Read", {"file_path": "research/greenfield/x/materials/raw/waitlist.csv"}, proj))
 
     def test_symlink_into_config_dir_is_caught(self):
         self.cfg.mkdir()
