@@ -119,7 +119,7 @@ section{padding:20px 24px;min-width:0}
 .note{color:var(--fg-2);font-size:13px;margin:0 0 8px}
 /* graph: the same agents as the timeline, drawn as who hands work to whom; lines are stretched SVG, nodes are real buttons */
 .h #viewSw{margin-right:auto}
-.graph{display:none;grid-template-columns:auto 44px minmax(0,1fr) 44px minmax(0,1fr) 24px auto;align-items:center}
+.graph{display:none;grid-template-columns:auto 44px minmax(0,26em) 44px minmax(0,18em) 24px auto;justify-content:start;align-items:center}
 .edges{position:relative;align-self:stretch}.edges svg{position:absolute;inset:0;width:100%;height:100%}
 .edges line{stroke:var(--line-2);stroke-width:1.5;vector-effect:non-scaling-stroke}
 .edges line.run{stroke:var(--run)}.edges line.done{stroke:var(--ok)}.edges line.fail{stroke:var(--bad)}.edges line.wait{stroke:var(--warn)}
@@ -212,12 +212,13 @@ th.r .hint .tip{left:auto;right:-8px}
 @media (forced-colors:active){.span,.node,.mnode,.room,.seg i,.sbar,.pbar,.pts,.tick{border:1px solid CanvasText}}
 @media (max-width:1100px){main{grid-template-columns:1fr;grid-template-rows:none;grid-template-areas:"verdict" "lanes" "path" "matrix" "log"}.verdict,.logp{border-right:0}.verdict{border-bottom:1px solid var(--line)}.matrix{border-right:0;border-bottom:1px solid var(--line)}
 }
-/* a verdict panel wide enough for two columns: map with the verdict's words beside it, steps below in two columns that read down */
+/* a verdict panel wide enough for two columns: the decision and its deal-breakers read first across the top, then test progress beside what Proceed still needs */
 @container verdict (min-width:700px){
-  #decBody{display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);column-gap:32px;align-content:start;grid-template-rows:auto auto auto 1fr;
-    grid-template-areas:"map word" "map head" "map stats" "map note" "bet bet" "prov prov"}
+  #decBody{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:32px;align-content:start;
+    grid-template-areas:"word word" "head head" "stats stats" "block block" "map note" "bet bet" "prov prov"}
   .vgrid{display:contents}#mapbox{grid-area:map;align-self:start}#vword{grid-area:word}#vhead{grid-area:head}#vstats{grid-area:stats}
-  .vnote{grid-area:note}.betbox{grid-area:bet}.prov{grid-area:prov}}
+  #blockers{grid-area:block}.vnote{grid-area:note;align-self:start}.betbox{grid-area:bet}.prov{grid-area:prov}}
+.blockers:not(:empty){margin:0 0 16px}
 @media (max-width:640px){
   #pillars td:first-child{white-space:normal}
   .bar{gap:10px;padding:0 12px}.lane{grid-template-columns:max-content minmax(0,1fr)}.mark .word,.clock,.kind,.conn .ctext{display:none}
@@ -247,8 +248,9 @@ th.r .hint .tip{left:auto;right:-8px}
 <div id="vword" class="vword"></div>
 <p id="vhead" class="vhead"></p>
 <div id="vstats" class="vstats"></div>
+<ul id="blockers" class="gates blockers" aria-label="Possible deal-breakers"></ul>
 <div class="vgrid"><div class="check" id="mapbox"></div>
-<div class="vnote"><ul id="blockers" class="gates" aria-label="Possible deal-breakers"></ul><p id="missing" class="missing"></p>
+<div class="vnote"><p id="missing" class="missing"></p>
 <ul id="gates" class="gates"></ul>
 <details id="attn" class="attn" hidden><summary id="attnSum"></summary><ul id="attnList"></ul></details></div>
 <div class="betbox" id="betbox"><div class="lbl" id="betLbl">Next steps</div><ol id="steps" class="steps"></ol>

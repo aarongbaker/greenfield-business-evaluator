@@ -782,11 +782,11 @@ class LiveStateTests(ServerMixin, unittest.TestCase):
 
     def test_reconcile_matrix(self):
         rows = [("failed", None, "Failed", "Agent failed: boom"), ("running", "failed", "Failed", "Checkpoint failed"),
-                ("completed", "completed", "Done", "Checkpointed"), ("completed", "queued", "Done", "Not checkpointed"),
-                ("completed", "running", "Done", "Not checkpointed"), ("completed", None, "Done", ""),
+                ("completed", "completed", "Done", "Report saved"), ("completed", "queued", "Done", "Report not saved yet"),
+                ("completed", "running", "Done", "Report not saved yet"), ("completed", None, "Done", ""),
                 ("running", "completed", "Running", "boom"), ("quiet", "running", "Quiet", "No activity for 5 min; not a failure"),
                 ("queued", "running", "Claimed", "Claimed in checkpoints, no hook events yet"),
-                ("queued", "completed", "Done", "From checkpoint (reused or hooks off)"), ("queued", "queued", "Queued", ""), ("queued", None, "Queued", "")]
+                ("queued", "completed", "Done", "Report saved (not watched live)"), ("queued", "queued", "Queued", ""), ("queued", None, "Queued", "")]
         for status, task, label, note in rows:
             d = observe.reconcile({"name": "gf-market", "status": status, "activity": "boom"}, task)
             self.assertEqual((d["label"], d["note"]), (label, note), (status, task))

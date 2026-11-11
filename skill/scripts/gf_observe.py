@@ -336,7 +336,7 @@ def reconcile(agent, task, run="running"):
     if s == "failed" or task == "failed":
         return d("Failed", "bad", f"Agent failed: {agent['activity']}" if s == "failed" else "Checkpoint failed", True)
     if s == "completed":
-        return d("Done", "good", *{"completed": ("Checkpointed",), "queued": ("Not checkpointed", True), "running": ("Not checkpointed", True)}.get(task, ()))
+        return d("Done", "good", *{"completed": ("Report saved",), "queued": ("Report not saved yet", True), "running": ("Report not saved yet", True)}.get(task, ()))
     if s in ("running", "quiet") and run != "running":  # a finished run cannot leave an agent Running
         return d("Done" if run == "completed" else "Stopped", "good" if run == "completed" else "neutral", f"Run {run}; no agent_completed event")
     if s == "running":
@@ -346,7 +346,7 @@ def reconcile(agent, task, run="running"):
     if task == "running":
         return d("Claimed", "accent", "Claimed in checkpoints, no hook events yet")
     if task == "completed":
-        return d("Done", "good", "From checkpoint (reused or hooks off)")
+        return d("Done", "good", "Report saved (not watched live)")
     return d("Queued", "neutral", "Waits for all 8 specialists" if agent["name"] == REDTEAM.claude_id else "")
 
 
