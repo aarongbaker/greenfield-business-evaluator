@@ -242,7 +242,7 @@ def validate(data, base_dir=None):
                 errors.append(f"pillars.{p}.behaviors[{j}] must include kind, description, observed_at, source_or_artifact")
         if nonempty_str(item.get("assessed_at")) and gf_materials.assessed_problem(item["assessed_at"]):
             errors.append(f"pillars.{p}.assessed_at {gf_materials.assessed_problem(item['assessed_at'])}: run greenfield evidence assessed {p}")
-        if type(q) is int and q > facts['rubric'][p]:  # W49: a finding, never a verdict change
+        if type(q) is int and q > facts['rubric'][p]:  # the total counts it at the rubric level
             warnings.append(f"pillars.{p}: quality {q} is above what evidence {e} supports ({facts['rubric'][p]})")
         by_id = {x['id']: x for x in facts['events']}
         for b in behaviors:
@@ -469,7 +469,8 @@ def _total_and_decision(data, facts, warnings):
     profile_name = data.get('project', {}).get('business_model', 'general')
     profile = PROFILES.get(profile_name, PROFILES['general'])
     weights = profile['weights']
-    total = round(sum(weights[p] * qs[p] / 5 for p in weights), 1) if complete else None
+    cap = facts.get('rubric', {})  # only proven points count: research alone tops out at 3 of 5 per pillar
+    total = round(sum(weights[p] * min(qs[p], cap.get(p, 3)) / 5 for p in weights), 1) if complete else None
     avg_ev = round(sum(ev.values()) / 8, 2)
     blockers = data.get("hard_blockers", [])
     fatal = [b for b in blockers if b["status"] == "confirmed" and b["fatal"]]

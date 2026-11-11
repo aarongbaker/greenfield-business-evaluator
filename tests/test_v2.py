@@ -195,7 +195,7 @@ class PortfolioTests(unittest.TestCase):
             self.assertEqual([r['rank'] for r in out['opportunities']],[1,2])
             for r in out['opportunities']:
                 self.assertIsNone(r['stored_decision']);self.assertFalse(r['decision_mismatch'])
-                self.assertEqual(r['quality_0_to_100'],80.0);self.assertEqual(r['business_model'],'general')
+                self.assertEqual(r['quality_0_to_100'],60.0);self.assertEqual(r['business_model'],'general')
     def test_invalid_evaluation_unranked_with_reason(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp)

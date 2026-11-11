@@ -15,6 +15,7 @@ Versioning rules:
 
 ### Changed
 
+- **Scores change, and a verdict can.** Weighted quality now counts each pillar only up to what its receipts support, so research alone tops out at 60 of 100 (it used to reach 100). Proceed is unaffected; an idea with a failed core test can now fall below 50 and read Pivot.
 - **Verdicts can change.** Proceed now needs signed, distinct receipts: one file or experiment backs at most 2 core pillars and 3 in all, each receipt must belong to this evaluation and idea and fit its pillar, and quality above 3 needs a receipt behind it, re-assessed after the newest one.
 - A failed core receipt or failed gate now says to stop or reframe; `ledger record` no longer takes behavior receipts (use `greenfield evidence add`).
 - `evidence_ledger` and `verification_report` must be `experiment-ledger.jsonl` and `source-verification.json` beside `evaluation.json`.

@@ -53,11 +53,11 @@ Quality is a finding, but Proceed holds it to what the receipts show. Each recei
 | `repeat_purchase` (`repeat`) | 5 | 5 | 5 | 2 |
 | no receipt (interviews, surveys, reviewed sources) | 2 | 3 | | |
 
-The rubric level comes from the **newest receipt at the highest evidence level** on the pillar, so a newer `fail` caps it at 2 whatever older passes say. Quality above the rubric level is allowed in the total, but it prints as a warning on every score and blocks Proceed. Every hand change to quality, claims, blockers or gates is listed under "Changes since tracking began" until a receipt covers it.
+The rubric level comes from the **newest receipt at the highest evidence level** on the pillar, so a newer `fail` caps it at 2 whatever older passes say. Quality above the rubric level counts in the total only up to that level: with no receipt, a pillar scored 4 or 5 adds the same points as a 3. It also prints as a warning on every score and blocks Proceed. Every hand change to quality, claims, blockers or gates is listed under "Changes since tracking began" until a receipt covers it.
 
 ## Weights and business-model profiles
 
-Weighted quality is `sum(weight × quality / 5)` across the pillars, out of 100. The weights depend on the business model you set in `project.business_model` (or with `greenfield start --model`):
+Weighted quality is `sum(weight × min(quality, rubric level) / 5)` across the pillars, out of 100. Research alone therefore tops out at 60: the rest has to come from customer tests. The weights depend on the business model you set in `project.business_model` (or with `greenfield start --model`):
 
 | Profile | Problem | Market | Value | Economics | Distribution | Competition | Execution | Timing | Pilot gates |
 |---|---|---|---|---|---|---|---|---|---|
@@ -124,18 +124,18 @@ These weights and thresholds are design choices for triage: the scores are **unc
 
 The bundled demo evaluation (route planning for independent commercial laundries, under `skill/assets/demo-research/`) has these pillar scores:
 
-| Pillar | Weight | Quality | Evidence | Contribution |
-|---|---|---|---|---|
-| Problem | 20 | 4 | 2 | 16 |
-| Market | 15 | 4 | 2 | 12 |
-| Value | 15 | 4 | 2 | 12 |
-| Economics | 15 | 3 | 2 | 9 |
-| Distribution | 15 | 3 | 2 | 9 |
-| Competition | 10 | 4 | 2 | 8 |
-| Execution | 5 | 4 | 2 | 4 |
-| Timing | 5 | 3 | 2 | 3 |
+| Pillar | Weight | Quality | Evidence | Counts as | Contribution |
+|---|---|---|---|---|---|
+| Problem | 20 | 4 | 2 | 3 | 12 |
+| Market | 15 | 4 | 2 | 3 | 9 |
+| Value | 15 | 4 | 2 | 3 | 9 |
+| Economics | 15 | 3 | 2 | 3 | 9 |
+| Distribution | 15 | 3 | 2 | 3 | 9 |
+| Competition | 10 | 4 | 2 | 3 | 6 |
+| Execution | 5 | 4 | 2 | 3 | 3 |
+| Timing | 5 | 3 | 2 | 3 | 3 |
 
-Weighted quality is 73 out of 100 and the evidence average is 2. The idea looks reasonable in the listing, but nobody has inspected it: no core pillar has evidence 3. The verdict is **Validate before build**, and `decision.json` names what would change it: a problem quality of 5, and evidence 3 on the five core pillars from real customer behavior.
+Weighted quality is 60 out of 100 and the evidence average is 2. The research scored five pillars at 4, but with no receipts each counts as 3. The idea looks reasonable in the listing, but nobody has inspected it: no core pillar has evidence 3. The verdict is **Validate before build**, and `decision.json` names what would change it: a problem quality of 5, and evidence 3 on the five core pillars from real customer behavior.
 
 ## Read the result
 

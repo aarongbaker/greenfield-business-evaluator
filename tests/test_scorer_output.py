@@ -165,8 +165,10 @@ def apply_gap(data, result):
 
 def no_receipts(data, warnings):
     """Score with the receipt rules met: apply_gap() edits fields and cannot sign receipts (test_evidence covers those)."""
+    w = scorer.Warnings(warnings)
+    w.facts = {"rubric": dict.fromkeys(scorer.PILLAR_WEIGHTS, 5)}  # as if receipts backed every quality
     with mock.patch.object(scorer, "proceed_problems", lambda *a: []):
-        return scorer.score(data, list(warnings))
+        return scorer.score(data, w)
 
 
 class VerdictGapTests(unittest.TestCase):

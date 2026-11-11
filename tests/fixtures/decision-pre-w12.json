@@ -8,7 +8,7 @@
   "decision": "VALIDATE_BEFORE_BUILD",
   "memo_label": "VALIDATE_BEFORE_BUILD",
   "reason": "Proceed only with experiments targeted at the weakest decision-critical assumptions.",
-  "weighted_quality_0_to_100": 80.0,
+  "weighted_quality_0_to_100": 60.0,
   "evidence_average_0_to_5": 1.0,
   "pillar_weights": {
     "problem": 20,
