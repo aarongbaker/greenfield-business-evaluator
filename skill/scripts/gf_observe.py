@@ -497,6 +497,13 @@ ROOMS = (("who", "Who", "Who exactly are you testing with?", "audience.md"), ("s
          ("find", "Find people", "Where do they come from?", "prospects.csv"), ("send", "Send and track", "Is it out, and what came back?", "log.csv"),
          ("record", "Record result", "Did it pass the mark you set?", None))
 LOG_COLUMNS = ("id", "sent_on", "variant", "replied", "result")
+# shown beside the message and sending rooms; every number is from the Google and Yahoo sender pages cited in docs/outreach.md
+COLD_RULES = ("You read and approve every message before it goes.",
+              "Send from your own mailbox, a few a day. Start low and raise it only while nobody complains.",
+              "Set up SPF or DKIM on the domain you send from: Gmail and Yahoo require one of them from every sender.",
+              "Give every message a plain way to say \"don't contact me again\", and honour it within 2 days.",
+              "Stop if people complain. Gmail and Yahoo expect spam reports to stay under 0.3% of messages; at 300 messages one report is already over that.",
+              "Check the law where you and your recipients are (CAN-SPAM in the US, GDPR in the EU and UK). This is not legal advice.")
 
 
 def _rows(path, need):
@@ -593,7 +600,7 @@ def _path(data, folder, rel, result, facts, demo, files):
     others = [{"text": f"Start with {r['steps'][0]['entry']['title'][0].lower()}{r['steps'][0]['entry']['title'][1:]}: {len(r['steps'])} test{'' if len(r['steps']) == 1 else 's'}, about {weeks(r)} week{'' if weeks(r) == 1 else 's'}",
                "command": None if demo else f"greenfield plan --add-experiments --route {n}"} for n, r in enumerate(routes[1:], 2) if r["steps"]]
     add = None if demo or not any(s["new_experiment"] for s in routes[0]["steps"]) else "greenfield plan --add-experiments"
-    return {"nodes": nodes, "others": others, "add": add, "warnings": warnings}, files
+    return {"nodes": nodes, "others": others, "add": add, "warnings": warnings, "rules": COLD_RULES}, files
 
 
 def _why(result):

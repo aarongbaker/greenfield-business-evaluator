@@ -142,7 +142,7 @@ The second command should print Research incomplete. CI (the badge above) also c
 
 ## Learn more
 
-- [docs/](docs/): [founder journey](docs/founder-journey.md), [install](docs/install.md), [commands](docs/cli.md), [how scoring works](docs/how-scoring-works.md), [Mission Control](docs/mission-control.md), [evidence and the ledger](docs/evidence.md), [comparing ideas](docs/portfolio.md), [troubleshooting](docs/troubleshooting.md)
+- [docs/](docs/): [founder journey](docs/founder-journey.md), [install](docs/install.md), [commands](docs/cli.md), [how scoring works](docs/how-scoring-works.md), [Mission Control](docs/mission-control.md), [evidence and the ledger](docs/evidence.md), [running a customer test](docs/outreach.md), [comparing ideas](docs/portfolio.md), [troubleshooting](docs/troubleshooting.md)
 - [CHANGELOG.md](CHANGELOG.md) and [SECURITY.md](SECURITY.md)
 
 ## License

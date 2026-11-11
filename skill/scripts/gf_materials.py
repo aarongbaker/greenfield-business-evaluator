@@ -578,12 +578,15 @@ def _bad_entries(data, folder):
 
 
 def inbox_warnings(folder):
-    """Personal data found in materials/inbox/, which the assistant may read."""
+    """Personal data found in materials/inbox/, which the assistant may read, and in outreach logs, which become receipts."""
     inbox = Path(folder) / "materials" / "inbox"
     out = []
     for f in sorted(inbox.iterdir()) if inbox.is_dir() else []:
         if f.is_file() and f.suffix.lower() in TEXT and (found := pii_found(f)):
             out.append(f"{f.name} in materials/inbox/ holds {', '.join(found)}: greenfield evidence redact {f}")
+    for f in sorted((Path(folder) / "outreach").glob("*/log.csv")):  # the log is recorded as a receipt, so it names people by id only
+        if f.is_file() and (found := pii_found(f)):
+            out.append(f"{f.parent.name}/log.csv in outreach/ holds {', '.join(found)}: keep contact details in prospects.csv and refer to people by id")
     return out
 
 

@@ -162,6 +162,16 @@ Fix:
 - `git rm -r --cached .greenfield-observe research/greenfield` (not run for you)
 - `greenfield doctor --fix`
 
+### `run.prospects`
+
+Prospect lists in `outreach/`, which hold names and contact details. Delete each one when its test is over.
+
+Can report: info.
+
+Fix:
+
+- Delete each file when its test is over
+
 ## Attestation
 
 ### `attestation.legacy_receipts`

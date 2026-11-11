@@ -222,6 +222,19 @@ class PiiTests(Base):
         self.assertEqual((info["type"], info["rows"]), ("text/csv", "2"))
         self.assertIn("amount,plan", info["first lines"])
 
+    def test_outreach_log_by_id_is_clean_and_contact_details_are_flagged(self):  # W60: the log is the receipt
+        self.start()
+        out = self.folder / "outreach/EXP-1"
+        out.mkdir(parents=True)
+        log = out / "log.csv"
+        log.write_text("id,sent_on,variant,replied,result\nP001,2026-01-05,A,yes,yes\nP002,2026-01-06,B,,\n")
+        self.assertEqual(gf_materials.pii_found(log), [])
+        self.assertEqual(gf_materials.inbox_warnings(self.folder), [])
+        (out / "prospects.csv").write_text("id,name,contact\nP001,Ann,ann@example.com\n")  # the list may hold contacts; only the log is checked
+        self.assertEqual(gf_materials.inbox_warnings(self.folder), [])
+        log.write_text("id,sent_on,variant,replied,result\nann@example.com,2026-01-05,A,yes,yes\n")
+        self.assertIn("EXP-1/log.csv in outreach/ holds emails", gf_materials.inbox_warnings(self.folder)[0])
+
     def test_doctor_flags_inbox_personal_data(self):
         self.start()
         inbox = self.folder / "materials/inbox"
