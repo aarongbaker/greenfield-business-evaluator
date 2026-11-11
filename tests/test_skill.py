@@ -102,7 +102,7 @@ class PolicyTests(unittest.TestCase):
         errors, warnings = scorer.validate(data)
         self.assertFalse(errors, errors)
         result = scorer.score(data, warnings)
-        self.assertEqual(result["weighted_quality_0_to_100"], 80.0)
+        self.assertEqual(result["weighted_quality_0_to_100"], 60.0)  # research alone tops out at 3 of 5 per pillar
         self.assertEqual(result["decision"], "VALIDATE_BEFORE_BUILD")
 
     def test_claimed_high_evidence_requires_observation(self):

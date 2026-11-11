@@ -6,7 +6,7 @@ As of 2026-10-23 · Profile: general · Research: live web, single-agent fallbac
 > [!TIP]
 > **VALIDATE_BEFORE_BUILD.** No customer test yet on any of the 5 core questions: test them before building
 >
-> Weighted quality 80 / 100 · Evidence average 1.0 / 5 · no pilot gates
+> Weighted quality 60 / 100 · Evidence average 1.0 / 5 · no pilot gates
 
 | Pillar | Weight | Quality | Evidence | Finding | Claims |
 | --- | --- | --- | --- | --- | --- |

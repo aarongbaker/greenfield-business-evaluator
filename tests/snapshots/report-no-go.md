@@ -6,7 +6,7 @@ As of 2026-10-23 · Profile: general · Research: live web, single-agent fallbac
 > [!CAUTION]
 > **NO_GO.** Fatal blocker confirmed: R1 Illustrative regulatory prohibition
 >
-> Weighted quality 80 / 100 · Evidence average 1.0 / 5 · no pilot gates
+> Weighted quality 60 / 100 · Evidence average 1.0 / 5 · no pilot gates
 
 | Pillar | Weight | Quality | Evidence | Finding | Claims |
 | --- | --- | --- | --- | --- | --- |
